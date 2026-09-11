@@ -1,0 +1,346 @@
+/* TSE Apuração — Estilos base
+ * Todas as cores usam custom properties sobrescritíveis pelo tema do cliente.
+ * Para customizar: .tse-apuracao-widget { --tse-primary: #sua-cor; }
+ */
+
+.tse-apuracao-widget {
+    --tse-primary:    #003366;
+    --tse-eleito:     #007A33;
+    --tse-bg:         #ffffff;
+    --tse-bg-alt:     #f5f7fa;
+    --tse-border:     #dde2ea;
+    --tse-text:       #1a2a3a;
+    --tse-muted:      #5a6a7a;
+    --tse-radius:     10px;
+    --tse-font:       -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --tse-mono:       "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+
+    font-family:  var(--tse-font);
+    background:   var(--tse-bg);
+    border:       1px solid var(--tse-border);
+    border-radius: var(--tse-radius);
+    overflow:     hidden;
+    margin:       24px 0;
+    box-shadow:   0 1px 4px rgba(0,0,0,.06);
+}
+
+/* ── Cabeçalho ── */
+.tse-header {
+    display:         flex;
+    align-items:     flex-start;
+    justify-content: space-between;
+    gap:             12px;
+    padding:         18px 20px 14px;
+    background:      var(--tse-primary);
+    flex-wrap:       wrap;
+}
+
+.tse-titulo {
+    font-size:   17px;
+    font-weight: 700;
+    color:       #fff;
+    margin:      0 0 8px;
+    line-height: 1.2;
+}
+
+.tse-apurado {
+    display:     flex;
+    align-items: center;
+    gap:         8px;
+}
+
+.tse-apurado-barra {
+    width:           120px;
+    height:          6px;
+    background:      rgba(255,255,255,.25);
+    border-radius:   3px;
+    overflow:        hidden;
+}
+
+.tse-apurado-fill {
+    height:          100%;
+    background:      #fff;
+    border-radius:   3px;
+    transition:      width .5s ease;
+    min-width:       2px;
+}
+
+.tse-apurado-label {
+    font-size:  12px;
+    color:      rgba(255,255,255,.85);
+    white-space: nowrap;
+}
+
+.tse-header-right {
+    display:     flex;
+    align-items: center;
+    gap:         8px;
+    flex-wrap:   wrap;
+}
+
+.tse-ao-vivo {
+    display:         inline-flex;
+    align-items:     center;
+    gap:             5px;
+    font-size:       11px;
+    font-weight:     600;
+    letter-spacing:  .04em;
+    text-transform:  uppercase;
+    background:      rgba(255,255,255,.15);
+    color:           #fff;
+    padding:         3px 10px;
+    border-radius:   20px;
+    border:          1px solid rgba(255,255,255,.3);
+}
+
+.tse-pulse {
+    width:            7px;
+    height:           7px;
+    border-radius:    50%;
+    background:       #f87171;
+    display:          inline-block;
+    animation:        tse-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes tse-pulse {
+    0%, 100% { opacity: 1; transform: scale(1);   }
+    50%       { opacity: .5; transform: scale(.8); }
+}
+
+.tse-status {
+    font-size:  11px;
+    color:      rgba(255,255,255,.75);
+}
+
+/* ── Conteúdo ── */
+.tse-content {
+    padding: 0;
+}
+
+.tse-vazio,
+.tse-erro {
+    padding:   32px 20px;
+    text-align: center;
+    color:     var(--tse-muted);
+    font-size: 14px;
+}
+
+.tse-erro {
+    color: #b91c1c;
+}
+
+.tse-loading-spinner {
+    display:       inline-block;
+    width:         18px;
+    height:        18px;
+    border:        2px solid var(--tse-border);
+    border-top-color: var(--tse-primary);
+    border-radius: 50%;
+    animation:     tse-spin .7s linear infinite;
+    vertical-align: middle;
+    margin-right:  8px;
+}
+
+@keyframes tse-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ── Lista de candidatos ── */
+.tse-lista {
+    list-style: none;
+    margin:     0;
+    padding:    0;
+}
+
+.tse-candidato {
+    display:         flex;
+    align-items:     center;
+    gap:             12px;
+    padding:         12px 20px;
+    border-bottom:   1px solid var(--tse-border);
+    transition:      background .15s;
+}
+
+.tse-candidato:last-child {
+    border-bottom: none;
+}
+
+.tse-candidato:hover {
+    background: var(--tse-bg-alt);
+}
+
+.tse-candidato.tse-eleito {
+    background: color-mix(in srgb, var(--tse-eleito) 7%, transparent);
+}
+
+.tse-candidato.tse-eleito:hover {
+    background: color-mix(in srgb, var(--tse-eleito) 12%, transparent);
+}
+
+.tse-cand-posicao {
+    font-family:     var(--tse-mono);
+    font-size:       11px;
+    color:           var(--tse-muted);
+    width:           22px;
+    text-align:      right;
+    flex-shrink:     0;
+    font-variant-numeric: tabular-nums;
+}
+
+.tse-cand-info {
+    flex:    1;
+    min-width: 0;
+}
+
+.tse-cand-top {
+    display:     flex;
+    align-items: baseline;
+    gap:         6px;
+    flex-wrap:   wrap;
+    margin-bottom: 6px;
+}
+
+.tse-cand-numero {
+    font-family:     var(--tse-mono);
+    font-size:       12px;
+    font-weight:     600;
+    color:           var(--tse-primary);
+    background:      color-mix(in srgb, var(--tse-primary) 10%, transparent);
+    padding:         1px 6px;
+    border-radius:   4px;
+    flex-shrink:     0;
+}
+
+.tse-cand-nome {
+    font-size:   14px;
+    font-weight: 600;
+    color:       var(--tse-text);
+    white-space: nowrap;
+    overflow:    hidden;
+    text-overflow: ellipsis;
+    max-width:   260px;
+}
+
+.tse-cand-partido {
+    font-size:  12px;
+    color:      var(--tse-muted);
+    flex-shrink: 0;
+}
+
+.tse-badge-eleito {
+    font-size:       10px;
+    font-weight:     700;
+    letter-spacing:  .06em;
+    text-transform:  uppercase;
+    color:           var(--tse-eleito);
+    background:      color-mix(in srgb, var(--tse-eleito) 12%, transparent);
+    border:          1px solid color-mix(in srgb, var(--tse-eleito) 30%, transparent);
+    padding:         2px 7px;
+    border-radius:   4px;
+    flex-shrink:     0;
+}
+
+.tse-cand-barra-wrap {
+    height:          5px;
+    background:      var(--tse-border);
+    border-radius:   3px;
+    overflow:        hidden;
+}
+
+.tse-cand-barra {
+    height:          100%;
+    background:      var(--tse-primary);
+    border-radius:   3px;
+    transition:      width .6s ease;
+    min-width:       2px;
+}
+
+.tse-eleito .tse-cand-barra {
+    background: var(--tse-eleito);
+}
+
+.tse-cand-votos {
+    display:         flex;
+    flex-direction:  column;
+    align-items:     flex-end;
+    flex-shrink:     0;
+    min-width:       80px;
+}
+
+.tse-votos-num {
+    font-family:     var(--tse-mono);
+    font-size:       14px;
+    font-weight:     600;
+    color:           var(--tse-text);
+    font-variant-numeric: tabular-nums;
+}
+
+.tse-votos-pct {
+    font-size:  12px;
+    color:      var(--tse-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Rodapé ── */
+.tse-footer {
+    display:         flex;
+    justify-content: space-between;
+    align-items:     center;
+    padding:         10px 20px;
+    background:      var(--tse-bg-alt);
+    border-top:      1px solid var(--tse-border);
+    gap:             12px;
+    flex-wrap:       wrap;
+}
+
+.tse-fonte,
+.tse-atualizado {
+    font-size: 11px;
+    color:     var(--tse-muted);
+}
+
+.tse-timestamp {
+    font-family: var(--tse-mono);
+}
+
+/* ── Responsivo ── */
+@media (max-width: 600px) {
+    .tse-header {
+        flex-direction: column;
+        gap:            10px;
+    }
+
+    .tse-candidato {
+        padding:   10px 14px;
+        gap:       8px;
+    }
+
+    .tse-cand-nome {
+        max-width: 160px;
+    }
+
+    .tse-cand-votos {
+        min-width: 60px;
+    }
+
+    .tse-apurado-barra {
+        width: 80px;
+    }
+
+    .tse-footer {
+        flex-direction: column;
+        align-items:    flex-start;
+        gap:            4px;
+    }
+}
+
+/* ── Transição de atualização ── */
+.tse-atualizando .tse-candidato {
+    animation: tse-flash .4s ease;
+}
+
+@keyframes tse-flash {
+    0%   { opacity: 1; }
+    40%  { opacity: .5; }
+    100% { opacity: 1; }
+}

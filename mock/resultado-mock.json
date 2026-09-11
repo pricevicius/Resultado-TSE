@@ -1,0 +1,89 @@
+{
+  "ele": "544",
+  "cdabr": "BR",
+  "dg": "05/10/2026",
+  "hg": "20:37:00",
+  "s": "Parcial",
+  "pst": 63.42,
+  "t": "1",
+  "cand": [
+    {
+      "seq": "1",
+      "sqcand": "280000614480",
+      "n": "13",
+      "nm": "FULANO DA SILVA",
+      "cc": "PT",
+      "nv": "VICE FULANO",
+      "e": "n",
+      "st": "",
+      "dvt": "Válido",
+      "vap": "48200000",
+      "pvap": "46,87%"
+    },
+    {
+      "seq": "2",
+      "sqcand": "280000617123",
+      "n": "22",
+      "nm": "BELTRANO DE SOUZA",
+      "cc": "PL",
+      "nv": "VICE BELTRANO",
+      "e": "n",
+      "st": "",
+      "dvt": "Válido",
+      "vap": "43100000",
+      "pvap": "41,90%"
+    },
+    {
+      "seq": "3",
+      "sqcand": "280000619955",
+      "n": "45",
+      "nm": "CICLANO PEREIRA",
+      "cc": "PSDB",
+      "nv": "VICE CICLANO",
+      "e": "n",
+      "st": "Não eleito",
+      "dvt": "Válido",
+      "vap": "5800000",
+      "pvap": "5,64%"
+    },
+    {
+      "seq": "4",
+      "sqcand": "280000621010",
+      "n": "30",
+      "nm": "DELTRANO LIMA",
+      "cc": "NOVO",
+      "nv": "VICE DELTRANO",
+      "e": "n",
+      "st": "Não eleito",
+      "dvt": "Válido",
+      "vap": "3200000",
+      "pvap": "3,11%"
+    },
+    {
+      "seq": "5",
+      "sqcand": "280000622891",
+      "n": "20",
+      "nm": "EPITÁCIO RODRIGUES",
+      "cc": "PODE",
+      "nv": "VICE EPITÁCIO",
+      "e": "n",
+      "st": "Não eleito",
+      "dvt": "Válido",
+      "vap": "1900000",
+      "pvap": "1,85%"
+    },
+    {
+      "seq": "6",
+      "sqcand": "280000623774",
+      "n": "43",
+      "nm": "FREDERICA CARVALHO",
+      "cc": "PSD",
+      "nv": "VICE FREDERICA",
+      "e": "n",
+      "st": "Não eleito",
+      "dvt": "Válido",
+      "vap": "600000",
+      "pvap": "0,58%"
+    }
+  ]
+}
