@@ -62,29 +62,16 @@ class TSE_Shortcode {
         $uf     = $request->get_param( 'uf' );
         $limite = $request->get_param( 'limite' );
 
-        $opts = get_option( 'tse_apuracao_settings', TSE_Settings::defaults() );
-        $ttl  = (int) ( $opts['ttl_ao_vivo'] ?? 30 );
-
         if ( TSE_API::is_mock_mode() ) {
             $data = TSE_API::get_mock_resultado();
             if ( isset( $data['erro'] ) ) {
                 return new WP_REST_Response( $data, 502 );
             }
-            if ( $limite > 0 && ! empty( $data['candidatos'] ) ) {
-                $data['candidatos'] = array_slice( $data['candidatos'], 0, $limite );
+        } else {
+            $data = self::snapshot_resultado( $cargo, $uf, (int) $request->get_param( 'turno' ) ?: 1 );
+            if ( isset( $data['erro'] ) ) {
+                return new WP_REST_Response( $data, 503 );
             }
-            return new WP_REST_Response( $data, 200 );
-        }
-
-        $ids = TSE_API::resolver_ids( $cargo, $uf );
-        if ( empty( $ids['eleicao'] ) ) {
-            return new WP_REST_Response( [ 'erro' => 'Eleição não configurada. Acesse Configurações > TSE Apuração.' ], 503 );
-        }
-
-        $data = TSE_API::get_resultado( $cargo, $uf, $ids['eleicao'], $ids['pleito'], $ttl );
-
-        if ( isset( $data['erro'] ) ) {
-            return new WP_REST_Response( $data, 502 );
         }
 
         if ( $limite > 0 && ! empty( $data['candidatos'] ) ) {
@@ -121,11 +108,6 @@ class TSE_Shortcode {
         $atualizar= max( 0, (int) $atts['atualizar'] );
         $titulo   = sanitize_text_field( $atts['titulo'] );
 
-        $opts  = get_option( 'tse_apuracao_settings', TSE_Settings::defaults() );
-        $ttl   = (int) ( $opts['ttl_ao_vivo'] ?? 30 );
-        // Passa cargo e UF para encontrar a eleicao correta no ele-c.json
-        $ids   = TSE_API::resolver_ids( $cargo, $uf );
-
         // Monta o ID único do widget para que o JS saiba o que atualizar
         $widget_id = 'tse-' . $cargo . '-' . $uf . '-' . uniqid();
 
@@ -138,12 +120,10 @@ class TSE_Shortcode {
                 $erro  = 'Erro no mock: ' . esc_html( $dados['erro'] );
                 $dados = [];
             }
-        } elseif ( empty( $ids['eleicao'] ) ) {
-            $erro = 'Eleição não configurada. Acesse <a href="' . admin_url( 'options-general.php?page=tse-apuracao' ) . '">Configurações > TSE Apuração</a>.';
         } else {
-            $dados = TSE_API::get_resultado( $cargo, $uf, $ids['eleicao'], $ids['pleito'], $ttl );
+            $dados = self::snapshot_resultado( $cargo, $uf, (int) $atts['turno'] );
             if ( isset( $dados['erro'] ) ) {
-                $erro = 'Dados temporariamente indisponíveis: ' . esc_html( $dados['erro'] );
+                $erro = 'Ainda não há snapshot válido para esta disputa.';
                 $dados = [];
             } elseif ( $limite > 0 && ! empty( $dados['candidatos'] ) ) {
                 $dados['candidatos'] = array_slice( $dados['candidatos'], 0, $limite );
@@ -153,5 +133,44 @@ class TSE_Shortcode {
         ob_start();
         include TSE_APURACAO_DIR . 'templates/resultado.php';
         return ob_get_clean();
+    }
+
+    /** Compatibility adapter: the historical widget only reads materialized snapshots. */
+    private static function snapshot_resultado( string $cargo, string $uf, int $turno ): array {
+        $code = TSE_API::CARGOS[ $cargo ] ?? $cargo;
+        $data = AE_Results::instance()->latest(
+            'eleicoes-2026',
+            max( 1, $turno ),
+            str_pad( (string) $code, 4, '0', STR_PAD_LEFT ),
+            strtoupper( $uf )
+        );
+        if ( ! $data || empty( $data['snapshot'] ) ) {
+            return array( 'erro' => 'Snapshot indisponível.' );
+        }
+        $totals = $data['snapshot']['totals'] ?? array();
+        $reported = (int) ( $totals['reported_sections'] ?? 0 );
+        $total = (int) ( $totals['total_sections'] ?? 0 );
+        $pct = $total > 0 ? number_format_i18n( ( $reported / $total ) * 100, 2 ) . '%' : '';
+        $candidates = array_map( static function ( array $candidate ): array {
+            return array(
+                'numero' => (string) ( $candidate['ballot_number'] ?? '' ),
+                'nome' => (string) ( $candidate['ballot_name'] ?: $candidate['full_name'] ?: $candidate['external_candidate_id'] ),
+                'partido' => (string) ( $candidate['party'] ?? '' ),
+                'votos' => (int) $candidate['votes'],
+                'percentual' => number_format_i18n( (float) $candidate['percentage'], 2 ) . '%',
+                'eleito' => (bool) $candidate['elected'],
+                'situacao' => (string) ( $candidate['situation'] ?? '' ),
+                'foto_url' => (string) ( $candidate['photo_url'] ?? '' ),
+                'sequencia' => (int) ( $candidate['rank_no'] ?? 0 ),
+            );
+        }, $data['candidates'] );
+        return array(
+            'atualizado_em' => $data['snapshot']['captured_at'],
+            'horario' => $data['snapshot']['generated_at'] ?? '',
+            'status' => $reported && $total && $reported >= $total ? 'Totalizado' : 'Parcial',
+            'pct_apurado' => $pct,
+            'turno' => (string) $turno,
+            'candidatos' => $candidates,
+        );
     }
 }

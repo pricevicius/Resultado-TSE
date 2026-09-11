@@ -1,0 +1,72 @@
+<?php
+defined( 'ABSPATH' ) || exit;
+
+require_once AE_DIR . 'includes/class-schema.php';
+require_once AE_DIR . 'includes/class-logger.php';
+require_once AE_DIR . 'includes/class-job-runner.php';
+require_once AE_DIR . 'includes/class-tse-client.php';
+require_once AE_DIR . 'includes/class-results.php';
+require_once AE_DIR . 'includes/class-rest.php';
+require_once AE_DIR . 'includes/class-shortcodes.php';
+require_once AE_DIR . 'includes/class-admin.php';
+
+final class AE_Plugin {
+	private static ?AE_Plugin $instance = null;
+
+	public static function instance(): AE_Plugin {
+		return self::$instance ??= new self();
+	}
+
+	public static function activate(): void {
+		AE_Schema::install();
+		self::seed_2026();
+		if ( ! wp_next_scheduled( 'ae_run_jobs' ) ) {
+			wp_schedule_event( time() + 60, 'ae_minute', 'ae_run_jobs' );
+		}
+	}
+
+	public static function deactivate(): void {
+		wp_clear_scheduled_hook( 'ae_run_jobs' );
+	}
+
+	public function boot(): void {
+		add_filter( 'cron_schedules', array( $this, 'minute_schedule' ) );
+		add_action( 'ae_run_jobs', array( AE_Job_Runner::instance(), 'tick' ) );
+		add_action( 'rest_api_init', array( AE_REST::instance(), 'register_routes' ) );
+		add_action( 'init', array( AE_Shortcodes::instance(), 'register' ) );
+		add_action( 'init', array( $this, 'register_blocks' ) );
+		if ( is_admin() ) {
+			AE_Admin::instance()->register();
+		}
+	}
+
+	public function minute_schedule( array $schedules ): array {
+		$schedules['ae_minute'] = array( 'interval' => MINUTE_IN_SECONDS, 'display' => __( 'Every minute (Apuracao)', 'apuracao-eleitoral' ) );
+		return $schedules;
+	}
+
+	public function register_blocks(): void {
+		register_block_type( AE_DIR . 'blocks/apuracao' );
+	}
+
+	private static function seed_2026(): void {
+		global $wpdb;
+		$table = $wpdb->prefix . 'ae_elections';
+		$exists = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$table} WHERE slug = %s", 'eleicoes-2026' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		if ( $exists ) {
+			return;
+		}
+		$wpdb->insert( $table, array(
+			'slug' => 'eleicoes-2026', 'name' => 'Eleicoes Gerais 2026', 'year' => 2026,
+			'timezone' => 'America/Sao_Paulo', 'status' => 'draft',
+			'config_json' => wp_json_encode( array(
+				'simulations' => array( '2026-09-15/2026-09-17', '2026-09-22/2026-09-24' ),
+				'positions' => array(
+					array( 'code' => '0001', 'name' => 'Presidente', 'scope_type' => 'BR', 'seats' => 1 ),
+					array( 'code' => '0003', 'name' => 'Governador', 'scope_type' => 'UF', 'seats' => 1 ),
+					array( 'code' => '0005', 'name' => 'Senador', 'scope_type' => 'UF', 'seats' => 2 ),
+				),
+			) ),
+		), array( '%s', '%s', '%d', '%s', '%s', '%s' ) );
+	}
+}
