@@ -20,11 +20,8 @@ class TSE_Settings {
     }
 
     public static function init(): void {
-        if ( is_admin() ) {
-            add_action( 'admin_menu',    [ __CLASS__, 'add_menu' ] );
-            add_action( 'admin_init',    [ __CLASS__, 'register_settings' ] );
-            add_action( 'admin_notices', [ __CLASS__, 'maybe_show_config_notice' ] );
-        }
+		// Administration is centralized in Apuração. Keep this class only as a
+		// compatibility layer for visual options and the historical shortcode.
     }
 
     public static function add_menu(): void {

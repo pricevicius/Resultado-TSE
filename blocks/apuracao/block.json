@@ -5,7 +5,7 @@
   "title": "Apuração eleitoral",
   "category": "widgets",
   "icon": "chart-bar",
-  "description": "Exibe um resumo pré-calculado da apuração eleitoral.",
+  "description": "Exibe a apuração e atualiza no cliente pela API local do WordPress.",
   "textdomain": "apuracao-eleitoral",
   "attributes": {
     "eleicao": { "type": "string", "default": "eleicoes-2026" },

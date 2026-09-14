@@ -5,6 +5,7 @@ require_once AE_DIR . 'includes/class-schema.php';
 require_once AE_DIR . 'includes/class-logger.php';
 require_once AE_DIR . 'includes/class-job-runner.php';
 require_once AE_DIR . 'includes/class-tse-client.php';
+require_once AE_DIR . 'includes/class-tse-discovery.php';
 require_once AE_DIR . 'includes/class-results.php';
 require_once AE_DIR . 'includes/class-rest.php';
 require_once AE_DIR . 'includes/class-shortcodes.php';

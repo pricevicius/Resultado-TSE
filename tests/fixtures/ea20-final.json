@@ -1,0 +1,31 @@
+{
+  "ele": "999999",
+  "t": "1",
+  "f": "s",
+  "tpabr": "uf",
+  "cdabr": "es",
+  "dg": "15/09/2026",
+  "hg": "16:59:59",
+  "idg": "999",
+  "tf": "s",
+  "and": "f",
+  "md": "e",
+  "carg": [{
+    "cd": "5",
+    "nv": "2",
+    "agr": [{
+      "tp": "i",
+      "par": [{
+        "sg": "AAA",
+        "cand": [
+          {"n":"111","sqcand":"2001","nm":"Eleita Um","nmu":"ELEITA UM","seq":"1","e":"s","st":"Eleito","vap":"600000","pvap":"40,00"},
+          {"n":"222","sqcand":"2002","nm":"Eleito Dois","nmu":"ELEITO DOIS","seq":"2","e":"s","st":"Eleito","vap":"500000","pvap":"33,33"},
+          {"n":"333","sqcand":"2003","nm":"Não Eleita","nmu":"NÃO ELEITA","seq":"3","e":"n","st":"Não eleito","vap":"400000","pvap":"26,67"}
+        ]
+      }]
+    }]
+  }],
+  "s": {"ts":"2500","st":"2500","pst":"100,00","snt":"0"},
+  "e": {"te":"1500000","est":"1500000"},
+  "v": {"tv":"1500000","vv":"1500000","vb":"0","tvn":"0"}
+}

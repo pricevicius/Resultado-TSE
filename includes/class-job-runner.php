@@ -53,7 +53,7 @@ final class AE_Job_Runner {
 		// The conditional UPDATE makes claim safe across concurrent cron/web workers.
 		$id = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$t} WHERE state IN ('queued','retry') AND run_after <= %s AND (locked_until IS NULL OR locked_until < %s) ORDER BY run_after ASC, id ASC LIMIT 1", $now, $now ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		if ( ! $id ) { return null; }
-		$updated = $wpdb->query( $wpdb->prepare( "UPDATE {$t} SET state='running', lock_token=%s, locked_until=%s, attempts=attempts+1, updated_at=%s WHERE id=%d AND state IN ('queued','retry') AND (locked_until IS NULL OR locked_until < %s)", $token, gmdate( 'Y-m-d H:i:s', time() + 120 ), $now, $id, $now ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$updated = $wpdb->query( $wpdb->prepare( "UPDATE {$t} SET state='running', lock_token=%s, locked_until=%s, attempts=attempts+1, updated_at=%s WHERE id=%d AND state IN ('queued','retry') AND (locked_until IS NULL OR locked_until < %s)", $token, gmdate( 'Y-m-d H:i:s', time() + 600 ), $now, $id, $now ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		return $updated ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$t} WHERE id=%d AND lock_token=%s", $id, $token ) ) : null; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	}
 
@@ -64,6 +64,7 @@ final class AE_Job_Runner {
 			$done = match ( $job->type ) {
 				'import_candidates' => AE_TSE_Client::instance()->import_candidates_page( $payload, $cursor, $job->id ),
 				'collect_results' => AE_TSE_Client::instance()->collect_results( $payload ),
+				'sync_tse' => AE_TSE_Discovery::sync( $payload ),
 				default => throw new RuntimeException( 'Unsupported job type: ' . $job->type ),
 			};
 			$this->finish( $job, $done );

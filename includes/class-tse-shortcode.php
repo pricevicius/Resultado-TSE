@@ -18,6 +18,10 @@ class TSE_Shortcode {
         if ( ! has_shortcode( $post->post_content, 'tse_apuracao' ) ) {
             return;
         }
+		self::enqueue_widget_assets();
+	}
+
+	public static function enqueue_widget_assets(): void {
 
         $opts = get_option( 'tse_apuracao_settings', TSE_Settings::defaults() );
 
@@ -53,6 +57,7 @@ class TSE_Shortcode {
                 'cargo'   => [ 'sanitize_callback' => 'sanitize_text_field', 'default' => 'presidente' ],
                 'uf'      => [ 'sanitize_callback' => 'sanitize_text_field', 'default' => 'br' ],
                 'limite'  => [ 'sanitize_callback' => 'absint',              'default' => 10 ],
+				'turno'   => [ 'sanitize_callback' => 'absint',              'default' => 1 ],
             ],
         ] );
     }
@@ -93,6 +98,7 @@ class TSE_Shortcode {
      *   turno    = 1|2
      */
     public static function render( $atts ): string {
+		self::enqueue_widget_assets();
         $atts = shortcode_atts( [
             'cargo'     => 'presidente',
             'uf'        => 'br',
@@ -107,6 +113,7 @@ class TSE_Shortcode {
         $limite   = max( 1, (int) $atts['limite'] );
         $atualizar= max( 0, (int) $atts['atualizar'] );
         $titulo   = sanitize_text_field( $atts['titulo'] );
+		$turno    = max( 1, min( 2, (int) $atts['turno'] ) );
 
         // Monta o ID único do widget para que o JS saiba o que atualizar
         $widget_id = 'tse-' . $cargo . '-' . $uf . '-' . uniqid();
@@ -121,7 +128,7 @@ class TSE_Shortcode {
                 $dados = [];
             }
         } else {
-            $dados = self::snapshot_resultado( $cargo, $uf, (int) $atts['turno'] );
+			$dados = self::snapshot_resultado( $cargo, $uf, $turno );
             if ( isset( $dados['erro'] ) ) {
                 $erro = 'Ainda não há snapshot válido para esta disputa.';
                 $dados = [];
@@ -144,13 +151,20 @@ class TSE_Shortcode {
             str_pad( (string) $code, 4, '0', STR_PAD_LEFT ),
             strtoupper( $uf )
         );
+		if ( ! $data || empty( $data['snapshot'] ) ) {
+			global $wpdb;
+			$p = $wpdb->prefix . 'ae_';
+			$slug = $wpdb->get_var( $wpdb->prepare( "SELECT e.slug FROM {$p}elections e INNER JOIN {$p}contests c ON c.election_id=e.id INNER JOIN {$p}snapshots s ON s.contest_id=c.id WHERE e.year=%d AND c.round_no=%d AND c.position_code=%s AND c.scope_code=%s AND s.status='valid' ORDER BY s.id DESC LIMIT 1", 2026, max( 1, $turno ), str_pad( (string) $code, 4, '0', STR_PAD_LEFT ), strtoupper( $uf ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			if ( $slug ) { $data = AE_Results::instance()->latest( $slug, max( 1, $turno ), str_pad( (string) $code, 4, '0', STR_PAD_LEFT ), strtoupper( $uf ) ); }
+		}
         if ( ! $data || empty( $data['snapshot'] ) ) {
             return array( 'erro' => 'Snapshot indisponível.' );
         }
         $totals = $data['snapshot']['totals'] ?? array();
         $reported = (int) ( $totals['reported_sections'] ?? 0 );
         $total = (int) ( $totals['total_sections'] ?? 0 );
-        $pct = $total > 0 ? number_format_i18n( ( $reported / $total ) * 100, 2 ) . '%' : '';
+		$pct_number = isset( $totals['reported_percentage'] ) ? (float) $totals['reported_percentage'] : ( $total > 0 ? ( $reported / $total ) * 100 : 0 );
+		$pct = number_format_i18n( $pct_number, 2 ) . '%';
         $candidates = array_map( static function ( array $candidate ): array {
             return array(
                 'numero' => (string) ( $candidate['ballot_number'] ?? '' ),
@@ -167,7 +181,7 @@ class TSE_Shortcode {
         return array(
             'atualizado_em' => $data['snapshot']['captured_at'],
             'horario' => $data['snapshot']['generated_at'] ?? '',
-            'status' => $reported && $total && $reported >= $total ? 'Totalizado' : 'Parcial',
+			'status' => ( $totals['progress'] ?? '' ) === 'final' ? 'Totalizado' : ( ( $totals['progress'] ?? '' ) === 'not_started' ? 'Aguardando apuração' : 'Parcial' ),
             'pct_apurado' => $pct,
             'turno' => (string) $turno,
             'candidatos' => $candidates,

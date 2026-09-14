@@ -6,7 +6,7 @@ if ( ! $admins ) {
 }
 wp_set_current_user( $admins[0]->ID );
 global $wpdb;
-$tabs = array( 'overview' => 'Comece em três passos', 'setup' => 'Configuração rápida', 'import' => 'Importar candidatos', 'jobs' => 'Fila de processamento', 'logs' => 'Últimos eventos' );
+$tabs = array( 'overview' => 'Comece em três passos', 'setup' => 'Conectar ao TSE', 'import' => 'Importar candidatos', 'jobs' => 'Fila de processamento', 'logs' => 'Últimos eventos' );
 foreach ( $tabs as $tab => $expected ) {
 	$_GET['tab'] = $tab;
 	$wpdb->last_error = '';

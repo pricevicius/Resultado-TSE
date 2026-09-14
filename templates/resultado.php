@@ -48,6 +48,7 @@ $max_votos = max( $max_votos, 1 );
     class="tse-apuracao-widget"
     data-cargo="<?php echo esc_attr( $cargo ); ?>"
     data-uf="<?php echo esc_attr( $uf ); ?>"
+	data-turno="<?php echo esc_attr( $turno ); ?>"
     data-limite="<?php echo esc_attr( $limite ); ?>"
     data-atualizar="<?php echo esc_attr( $atualizar ); ?>"
     style="--tse-primary:<?php echo $cor; ?>;--tse-eleito:<?php echo $cor_eleito; ?>"
@@ -109,6 +110,8 @@ $max_votos = max( $max_votos, 1 );
                         <span class="tse-cand-partido"><?php echo esc_html( $cand['partido'] ); ?></span>
                         <?php if ( $cand['eleito'] ) : ?>
                         <span class="tse-badge-eleito">Eleito</span>
+						<?php elseif ( ! empty( $cand['situacao'] ) && 'Totalizado' === $status ) : ?>
+						<span class="tse-badge-status"><?php echo esc_html( $cand['situacao'] ); ?></span>
                         <?php endif; ?>
                     </div>
                     <div class="tse-cand-barra-wrap" role="presentation">
