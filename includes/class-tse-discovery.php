@@ -24,6 +24,9 @@ final class AE_TSE_Discovery {
 	public static function sync( array $payload ): array {
 		$environment = sanitize_key( $payload['environment'] ?? 'oficial' );
 		$year = max( 2022, absint( $payload['year'] ?? 2026 ) );
+		if ( 'simulado' === $environment ) {
+			throw new RuntimeException( 'O TSE ainda não publicou a URL do ambiente simulado de 2026. Nenhuma requisição foi enviada para evitar respostas 404 e risco de bloqueio.' );
+		}
 		$url = self::config_url( $environment );
 		$catalog = AE_TSE_Client::instance()->fetch_json( $url, false );
 		if ( empty( $catalog['pl'] ) || ! is_array( $catalog['pl'] ) ) {

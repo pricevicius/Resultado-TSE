@@ -35,12 +35,12 @@ Nenhum visitante consulta o TSE diretamente. Nenhum operador precisa montar ou c
 
 | Uso | Oficial | Simulado |
 | --- | --- | --- |
-| Host | `https://resultados.tse.jus.br` | `https://resultados-sim.tse.jus.br` |
+| Host | `https://resultados.tse.jus.br` | ainda não publicado pelo TSE |
 | Ambiente | `oficial` | `simulado` |
-| EA11 | `/{ambiente}/comum/config/ele-c.json` | mesmo padrão no host simulado |
+| EA11 | `/oficial/comum/config/ele-c.json` | indisponível até divulgação oficial |
 | Candidatos | `https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_cand/consulta_cand_{ANO}.zip` | não se aplica |
 
-O ciclo, pleito, eleição, abrangências e cargos não são fixados no código: vêm do EA11. Em 14/09/2026, o EA11 oficial ainda devolvia o ciclo `ele2024`; a sincronização de 2026 deve informar claramente que o catálogo respondeu, mas a eleição ainda não foi publicada.
+O ciclo, pleito, eleição, abrangências e cargos não são fixados no código: vêm do EA11. Em 14/09/2026, o EA11 oficial ainda devolvia o ciclo `ele2024`; a sincronização de 2026 deve informar claramente que o catálogo respondeu, mas a eleição ainda não foi publicada. O FAQ do TSE também afirma que a URL de acesso aos simulados ainda não está disponível. Por segurança, o botão Simulado fica bloqueado até a publicação oficial, evitando 404 que podem levar a bloqueio de IP.
 
 ### Construção EA20
 
@@ -192,7 +192,7 @@ Para mapas municipais em escala nacional, a próxima fase deve:
 
 ## Plano dos simulados
 
-Janelas: 15–17/09/2026 e 22–24/09/2026, 9h–12h e 14h–17h (Brasília).
+Janelas: 15–17/09/2026 e 22–24/09/2026, 9h–12h e 14h–17h (Brasília). Essas são as primeiras janelas possíveis para validação externa; não garantem uma URL antes de sua divulgação pelo TSE.
 
 1. sincronizar **Simulado** e registrar EA11, ciclo, pleito e eleições;
 2. confirmar zero inicial e `and = "n"`;

@@ -17,6 +17,12 @@ if ( 'final' !== $final['totals']['progress'] || ! $final['totals']['final'] || 
 if ( 'https://resultados.tse.jus.br/oficial/comum/config/ele-c.json' !== AE_TSE_Discovery::config_url( 'oficial' ) ) {
 	throw new RuntimeException( 'Official EA11 URL contract failed.' );
 }
+try {
+	AE_TSE_Discovery::sync( array( 'environment' => 'simulado', 'year' => 2026 ) );
+	throw new RuntimeException( 'Simulation guard was not triggered.' );
+} catch ( RuntimeException $error ) {
+	if ( ! str_contains( $error->getMessage(), 'ainda não publicou' ) ) { throw $error; }
+}
 if ( ! str_ends_with( AE_TSE_Discovery::candidates_url( 2026 ), '/consulta_cand_2026.zip' ) ) {
 	throw new RuntimeException( 'Candidate package URL contract failed.' );
 }
