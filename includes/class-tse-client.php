@@ -22,9 +22,9 @@ final class AE_TSE_Client {
 		global $wpdb; $table = $wpdb->prefix . 'ae_candidates'; $now = current_time( 'mysql', true );
 		foreach ( $batch as $row ) {
 			if ( ! is_array( $row ) ) { continue; }
-			$external = sanitize_text_field( (string) ( $row['id'] ?? $row['sq_CANDIDATO'] ?? '' ) );
+			$external = sanitize_text_field( (string) ( $row['id'] ?? $row['SQ_CANDIDATO'] ?? $row['sq_CANDIDATO'] ?? '' ) );
 			if ( '' === $external ) { continue; }
-			$data = array( 'election_id' => $election_id, 'external_id' => $external, 'contest_id' => absint( $row['contest_id'] ?? 0 ) ?: null, 'ballot_name' => sanitize_text_field( $row['nm_URNA_CANDIDATO'] ?? $row['nomeUrna'] ?? '' ), 'full_name' => sanitize_text_field( $row['nm_CANDIDATO'] ?? $row['nomeCompleto'] ?? '' ), 'ballot_number' => sanitize_text_field( (string) ( $row['nr_CANDIDATO'] ?? $row['numero'] ?? '' ) ), 'party' => sanitize_text_field( $row['sg_PARTIDO'] ?? $row['partido'] ?? '' ), 'situation' => sanitize_text_field( $row['ds_SITUACAO_CANDIDATURA'] ?? $row['situacao'] ?? '' ), 'photo_url' => esc_url_raw( $row['urlFoto'] ?? '' ), 'data_json' => wp_json_encode( $row ), 'updated_at' => $now );
+			$data = array( 'election_id' => $election_id, 'external_id' => $external, 'contest_id' => absint( $row['contest_id'] ?? 0 ) ?: null, 'ballot_name' => sanitize_text_field( $row['NM_URNA_CANDIDATO'] ?? $row['nm_URNA_CANDIDATO'] ?? $row['nomeUrna'] ?? '' ), 'full_name' => sanitize_text_field( $row['NM_CANDIDATO'] ?? $row['nm_CANDIDATO'] ?? $row['nomeCompleto'] ?? '' ), 'ballot_number' => sanitize_text_field( (string) ( $row['NR_CANDIDATO'] ?? $row['nr_CANDIDATO'] ?? $row['numero'] ?? '' ) ), 'party' => sanitize_text_field( $row['SG_PARTIDO'] ?? $row['sg_PARTIDO'] ?? $row['partido'] ?? '' ), 'situation' => sanitize_text_field( $row['DS_SITUACAO_CANDIDATURA'] ?? $row['ds_SITUACAO_CANDIDATURA'] ?? $row['situacao'] ?? '' ), 'photo_url' => esc_url_raw( $row['urlFoto'] ?? '' ), 'data_json' => wp_json_encode( $row ), 'updated_at' => $now );
 			$wpdb->replace( $table, $data, array( '%d','%s','%d','%s','%s','%s','%s','%s','%s','%s','%s' ) );
 		}
 		AE_Logger::write( 'info', 'candidate_import_page', array( 'job_id' => $job_id, 'offset' => $offset, 'count' => count( $batch ) ) );

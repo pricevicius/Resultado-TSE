@@ -22,9 +22,29 @@ final class AE_Job_Runner {
 	public function tick(): void {
 		if ( ! wp_cache_add( self::LOCK_KEY, 1, 'apuracao-eleitoral', self::LOCK_TTL ) ) { return; }
 		try {
+			$this->enqueue_due_collections();
 			$deadline = microtime( true ) + 40;
 			while ( microtime( true ) < $deadline && ( $job = $this->claim() ) ) { $this->run( $job ); }
 		} finally { wp_cache_delete( self::LOCK_KEY, 'apuracao-eleitoral' ); }
+	}
+
+	/** Enqueues one collection per due contest and avoids duplicates already in flight. */
+	private function enqueue_due_collections(): void {
+		global $wpdb;
+		$p = $wpdb->prefix . 'ae_';
+		$contests = $wpdb->get_results( "SELECT id,config_json FROM {$p}contests WHERE active=1 AND config_json IS NOT NULL" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		foreach ( $contests as $contest ) {
+			$config = json_decode( (string) $contest->config_json, true );
+			$collection = is_array( $config ) ? ( $config['collection'] ?? array() ) : array();
+			if ( empty( $collection['enabled'] ) || empty( $collection['source_url'] ) ) { continue; }
+			$interval = max( 30, min( 900, absint( $collection['interval'] ?? 60 ) ) );
+			$last = $wpdb->get_var( $wpdb->prepare( "SELECT MAX(captured_at) FROM {$p}snapshots WHERE contest_id=%d AND status='valid'", $contest->id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			if ( $last && strtotime( $last . ' UTC' ) > time() - $interval ) { continue; }
+			$needle = '%"contest_id":' . (int) $contest->id . '%';
+			$pending = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$p}jobs WHERE type='collect_results' AND state IN ('queued','running','retry') AND payload_json LIKE %s LIMIT 1", $needle ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			if ( $pending ) { continue; }
+			self::enqueue( 'collect_results', array( 'contest_id' => (int) $contest->id, 'kind' => strtoupper( sanitize_key( $collection['kind'] ?? 'EA20' ) ), 'source_url' => esc_url_raw( $collection['source_url'] ) ) );
+		}
 	}
 
 	private function claim(): ?object {

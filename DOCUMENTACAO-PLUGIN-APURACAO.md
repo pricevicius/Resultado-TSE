@@ -54,6 +54,18 @@ O coletor aceita apenas HTTPS em `*.tse.jus.br`, tem timeout, redirecionamentos 
 - **Jobs:** jobs usam lock de object cache, claim condicional no banco, token e TTL. Importações de JSON e de CSV/ZIP dos dados abertos têm cursor de 250 registros; o CSV/ZIP é baixado uma vez para arquivo temporário, lido por streaming e retomado pela linha mesmo após nova execução. Erros usam backoff e encerram como `failed` após cinco tentativas.
 - **Escala:** em produção, configure Redis/Memcached para object cache, WP-Cron real (`wp cron event run ae_run_jobs`) a cada minuto, fila dedicada se disponível, banco com InnoDB, CDN que respeite os cabeçalhos e retenção documentada de payloads.
 
+## Operação pelo painel
+
+O menu **Apuração** concentra o fluxo operacional em cinco abas:
+
+1. **Visão geral:** indicadores, saúde do cron e atalho para processar a fila.
+2. **Configuração:** o botão de configuração rápida cria 83 disputas de uma eleição geral (Presidente em dois turnos, Governador em dois turnos por UF e Senador no primeiro turno com duas vagas). Também permite cadastrar disputas personalizadas.
+3. **Importar e coletar:** formulários visuais para importar candidatos de ZIP/CSV/JSON e configurar a coleta recorrente EA14/EA15/EA20 por disputa.
+4. **Fila e progresso:** situação dos jobs, registros processados, tentativas, erro e botão para tentar novamente. A tela se atualiza a cada cinco segundos.
+5. **Logs:** últimos cem eventos operacionais com contexto.
+
+Uma fonte de coleta ativa é verificada a cada ciclo do cron. O plugin só cria novo job quando o último snapshot ultrapassou o intervalo configurado e não existe coleta da disputa em andamento.
+
 ## API
 
 Público, cacheável:
@@ -81,7 +93,7 @@ Há também o shortcode-base `[apuracao_candidato id="id-externo"]`; o template 
 ## Fases de entrega
 
 1. **Fundação (implementada):** schema, eleição 2026, jobs/locks, coletor, snapshots, cache, REST, bloco/shortcodes, health e carga.
-2. **Operação editorial:** CRUD completo de eleições/disputas, tela de filas/logs, permissões específicas, templates de candidato e páginas de apuração.
+2. **Operação editorial (parcialmente implementada):** configuração guiada, tela de importação/coleta, filas, retry e logs. Ainda faltam permissões específicas, templates completos de candidato e páginas editoriais dedicadas.
 3. **Homologação TSE:** fixtures oficiais, verificador por contrato de EA14/15/20, comparação de totais, observabilidade e alertas.
 4. **Produção:** cache distribuído/CDN, testes de pico, plano de rollback e treinamento da redação.
 
@@ -99,6 +111,6 @@ As janelas informadas para simulado são **15–17/09/2026** e **22–24/09/2026
 ## Limitações conhecidas desta fase
 
 - Não há runtime PHP/WordPress neste workspace, portanto não foi possível rodar lint, PHPUnit, ativação ou `dbDelta` contra MySQL.
-- A interface administrativa ainda é um painel de saúde; configuração e fila são expostas pela REST API até a fase editorial.
+- O painel administrativo cobre o fluxo operacional principal, mas ainda exige que o usuário obtenha as URLs oficiais dos arquivos do TSE; descoberta automática de fontes depende da homologação dos contratos de 2026.
 - Os layouts e os campos exatos de EA14/EA15/EA20 devem ser confrontados com arquivos dos simulados; os aliases atuais são deliberadamente isolados para essa adaptação.
 - CSV/ZIP pressupõe o delimitador `;` empregado nos dados abertos do TSE e um único CSV de candidatos por arquivo. Uma fonte com outro layout deve ser adicionada como adaptador e coberta por fixture antes da importação.

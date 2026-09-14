@@ -18,8 +18,9 @@ final class AE_Plugin {
 	}
 
 	public static function activate(): void {
+		add_filter( 'cron_schedules', array( self::instance(), 'minute_schedule' ) );
 		AE_Schema::install();
-		self::seed_2026();
+		if ( AE_Schema::VERSION === get_option( 'ae_schema_version' ) ) { self::seed_2026(); }
 		if ( ! wp_next_scheduled( 'ae_run_jobs' ) ) {
 			wp_schedule_event( time() + 60, 'ae_minute', 'ae_run_jobs' );
 		}
@@ -31,6 +32,13 @@ final class AE_Plugin {
 
 	public function boot(): void {
 		add_filter( 'cron_schedules', array( $this, 'minute_schedule' ) );
+		if ( AE_Schema::VERSION !== get_option( 'ae_schema_version' ) ) {
+			AE_Schema::install();
+			if ( AE_Schema::VERSION === get_option( 'ae_schema_version' ) ) { self::seed_2026(); }
+		}
+		if ( ! wp_next_scheduled( 'ae_run_jobs' ) ) {
+			wp_schedule_event( time() + 60, 'ae_minute', 'ae_run_jobs' );
+		}
 		add_action( 'ae_run_jobs', array( AE_Job_Runner::instance(), 'tick' ) );
 		add_action( 'rest_api_init', array( AE_REST::instance(), 'register_routes' ) );
 		add_action( 'init', array( AE_Shortcodes::instance(), 'register' ) );
@@ -56,6 +64,7 @@ final class AE_Plugin {
 		if ( $exists ) {
 			return;
 		}
+		$now = current_time( 'mysql', true );
 		$wpdb->insert( $table, array(
 			'slug' => 'eleicoes-2026', 'name' => 'Eleicoes Gerais 2026', 'year' => 2026,
 			'timezone' => 'America/Sao_Paulo', 'status' => 'draft',
@@ -66,7 +75,7 @@ final class AE_Plugin {
 					array( 'code' => '0003', 'name' => 'Governador', 'scope_type' => 'UF', 'seats' => 1 ),
 					array( 'code' => '0005', 'name' => 'Senador', 'scope_type' => 'UF', 'seats' => 2 ),
 				),
-			) ),
-		), array( '%s', '%s', '%d', '%s', '%s', '%s' ) );
+			) ), 'created_at' => $now, 'updated_at' => $now,
+		), array( '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s' ) );
 	}
 }
