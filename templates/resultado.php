@@ -74,7 +74,7 @@ $max_votos = max( $max_votos, 1 );
             <?php if ( $atualizar > 0 ) : ?>
             <span class="tse-ao-vivo <?php echo $dados_atrasados ? 'tse-dados-atrasados' : ''; ?>" title="Atualização automática a cada <?php echo esc_attr( $atualizar ); ?> segundos">
                 <span class="tse-pulse" aria-hidden="true"></span>
-                <span class="tse-live-label"><?php echo $dados_atrasados ? 'Dados atrasados' : 'Ao vivo'; ?></span>
+                <span class="tse-live-label"><?php echo $dados_atrasados ? 'Dados atrasados' : ( 'Totalizado' === $status ? 'Apuração concluída' : 'Ao vivo' ); ?></span>
             </span>
             <?php endif; ?>
             <?php if ( $status ) : ?>

@@ -19,12 +19,75 @@
         const limite  = widget.dataset.limite || 10;
 		const turno   = widget.dataset.turno || 1;
 		const url     = `${ restUrl }?cargo=${ encodeURIComponent( cargo ) }&uf=${ encodeURIComponent( uf ) }&turno=${ turno }&limite=${ limite }`;
+		const apply   = widget.classList.contains( 'tse-card' ) ? applyCardUpdate : applyUpdate;
 
         fetch( url, { headers: { 'X-WP-Nonce': nonce } } )
             .then( r => r.ok ? r.json() : Promise.reject( r.status ) )
-            .then( data => applyUpdate( widget, data ) )
+			.then( data => apply( widget, data ) )
             .catch( () => {} ); // falha silenciosa — mantém conteúdo anterior
     }
+
+	function createCardBadge( c, status ) {
+		if ( c.eleito ) {
+			const badge = document.createElement( 'span' );
+			badge.className = 'tse-badge-eleito';
+			badge.textContent = 'Eleito';
+			return badge;
+		}
+		if ( 'Totalizado' === status && c.situacao ) {
+			const badge = document.createElement( 'span' );
+			badge.className = 'tse-badge-status' + ( c.segundo_turno ? ' tse-badge-turno2' : '' );
+			badge.textContent = c.situacao;
+			return badge;
+		}
+		return null;
+	}
+
+	// [tse_apuracao_card]: um card por colocado (data-posicao decide qual candidato este card mostra).
+	function applyCardUpdate( widget, data ) {
+		if ( ! data ) return;
+		const posicao = parseInt( widget.dataset.posicao, 10 ) || 0;
+		const lider = data.candidatos && data.candidatos[ posicao ];
+
+		const pctEl = widget.querySelector( '.tse-card-pct' );
+		if ( pctEl && data.pct_apurado ) pctEl.textContent = data.pct_apurado + ' apurado';
+
+		const atualizadoEl = widget.querySelector( '.tse-card-atualizado' );
+		if ( atualizadoEl ) {
+			atualizadoEl.classList.toggle( 'tse-dados-atrasados', Boolean( data.atrasado ) );
+			atualizadoEl.textContent = data.atrasado ? 'Dados atrasados' : 'Ao vivo';
+		}
+
+		if ( ! lider ) return;
+
+		const liderEl = widget.querySelector( '.tse-card-lider' );
+		if ( liderEl ) {
+			liderEl.classList.toggle( 'tse-eleito', Boolean( lider.eleito ) );
+			liderEl.classList.toggle( 'tse-segundo-turno', Boolean( lider.segundo_turno ) );
+		}
+
+		const numEl = widget.querySelector( '.tse-card-numero' );
+		const nomeEl = widget.querySelector( '.tse-card-nome' );
+		const partidoEl = widget.querySelector( '.tse-card-partido' );
+		const pctCandEl = widget.querySelector( '.tse-card-percentual' );
+		const barraEl = widget.querySelector( '.tse-card-barra' );
+		if ( numEl ) numEl.textContent = lider.numero;
+		if ( nomeEl ) nomeEl.textContent = lider.nome;
+		if ( partidoEl ) partidoEl.textContent = lider.partido;
+		if ( pctCandEl ) pctCandEl.textContent = lider.percentual;
+		if ( barraEl ) {
+			// 'percentual' vem formatado ("12,85%") para exibição; a largura da barra precisa de número com ponto.
+			const pctBarra = parseFloat( String( lider.percentual || '0' ).replace( ',', '.' ) );
+			barraEl.style.width = ( isNaN( pctBarra ) ? 0 : pctBarra ) + '%';
+		}
+
+		const rodapeEl = widget.querySelector( '.tse-card-rodape' );
+		if ( rodapeEl ) {
+			rodapeEl.querySelector( '.tse-badge-eleito, .tse-badge-status' )?.remove();
+			const badge = createCardBadge( lider, data.status );
+			if ( badge ) { rodapeEl.prepend( badge ); }
+		}
+	}
 
     function applyUpdate( widget, data ) {
         if ( ! data || ! data.candidatos ) return;
@@ -149,5 +212,5 @@
     }
 
     // Inicializa todos os widgets na página
-    document.querySelectorAll( '.tse-apuracao-widget' ).forEach( initWidget );
+    document.querySelectorAll( '.tse-apuracao-widget, .tse-card' ).forEach( initWidget );
 } )();

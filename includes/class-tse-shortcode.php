@@ -6,6 +6,7 @@ class TSE_Shortcode {
 
     public static function init(): void {
         add_shortcode( 'tse_apuracao', [ __CLASS__, 'render' ] );
+        add_shortcode( 'tse_apuracao_card', [ __CLASS__, 'render_card' ] );
         add_action( 'wp_enqueue_scripts', [ __CLASS__, 'enqueue_assets' ] );
         add_action( 'rest_api_init', [ __CLASS__, 'register_rest_route' ] );
     }
@@ -16,7 +17,7 @@ class TSE_Shortcode {
         if ( ! is_singular() || ! is_a( $post, 'WP_Post' ) ) {
             return;
         }
-        if ( ! has_shortcode( $post->post_content, 'tse_apuracao' ) ) {
+        if ( ! has_shortcode( $post->post_content, 'tse_apuracao' ) && ! has_shortcode( $post->post_content, 'tse_apuracao_card' ) ) {
             return;
         }
 		self::enqueue_widget_assets();
@@ -146,6 +147,50 @@ class TSE_Shortcode {
         return ob_get_clean();
     }
 
+    /**
+     * Renderiza o shortcode [tse_apuracao_card] — card compacto com só o líder da disputa.
+     * Pensado para grades na home: pode ser repetido quantas vezes quiser, um por disputa.
+     *
+     * Atributos:
+     *   cargo    = presidente|governador|senador|deputado-federal|deputado-estadual|prefeito|vereador
+     *   uf       = br|sp|rj|mg|... (sigla em minúsculas)
+     *   turno    = 1|2
+     *   limite   = 1 (quantos colocados mostrar; 1 = card grande só do líder, >1 = mini-lista)
+     *   atualizar= 60 (segundos; 0 = desligar auto-refresh)
+     *   titulo   = "Governador — Espírito Santo" (opcional; default é montado a partir de cargo/uf)
+     *   classe   = classe(s) CSS extra no elemento raiz, para o front estilizar sem !important
+     */
+    public static function render_card( $atts ): string {
+        self::enqueue_widget_assets();
+        $atts = shortcode_atts( [
+            'cargo'     => 'presidente',
+            'uf'        => 'br',
+            'turno'     => 1,
+            'limite'    => 1,
+            'atualizar' => 60,
+            'titulo'    => '',
+            'classe'    => '',
+        ], $atts, 'tse_apuracao_card' );
+
+        $cargo       = sanitize_text_field( $atts['cargo'] );
+        $uf          = strtolower( sanitize_text_field( $atts['uf'] ) );
+        $turno       = max( 1, min( 2, (int) $atts['turno'] ) );
+        $limite      = max( 1, (int) $atts['limite'] );
+        $atualizar   = max( 0, (int) $atts['atualizar'] );
+        $titulo      = sanitize_text_field( $atts['titulo'] );
+        $classe_extra = implode( ' ', array_filter( array_map( 'sanitize_html_class', preg_split( '/\s+/', trim( (string) $atts['classe'] ) ) ) ) );
+        $widget_id   = 'tse-card-' . $cargo . '-' . $uf . '-' . uniqid();
+
+        $dados      = TSE_API::is_mock_mode() ? TSE_API::get_mock_resultado() : self::snapshot_resultado( $cargo, $uf, $turno );
+        $erro       = isset( $dados['erro'] ) ? 'Ainda não há snapshot válido para esta disputa.' : null;
+        $candidatos = ! $erro ? array_slice( $dados['candidatos'] ?? [], 0, $limite ) : [];
+        $lider      = $candidatos[0] ?? null;
+
+        ob_start();
+        include TSE_APURACAO_DIR . 'templates/card.php';
+        return ob_get_clean();
+    }
+
     /** Compatibility adapter: the historical widget only reads materialized snapshots. */
     private static function snapshot_resultado( string $cargo, string $uf, int $turno ): array {
         $code = TSE_API::CARGOS[ $cargo ] ?? $cargo;
@@ -193,7 +238,8 @@ class TSE_Shortcode {
 			'status' => ( $totals['progress'] ?? '' ) === 'final' ? 'Totalizado' : ( ( $totals['progress'] ?? '' ) === 'not_started' ? 'Aguardando apuração' : 'Parcial' ),
             'pct_apurado' => $pct,
 			'pct_apurado_numero' => round( $pct_number, 2 ),
-			'atrasado' => ! $captured_timestamp || $captured_timestamp < time() - 3 * MINUTE_IN_SECONDS,
+			// Disputa "final" nao recebe mais atualizacoes do TSE; snapshot antigo ali e normal, nao atraso.
+			'atrasado' => 'final' !== ( $totals['progress'] ?? '' ) && ( ! $captured_timestamp || $captured_timestamp < time() - 3 * MINUTE_IN_SECONDS ),
 			'votos_brancos' => (int) ( $totals['blank_votes'] ?? 0 ),
 			'votos_nulos' => (int) ( $totals['null_votes'] ?? 0 ),
 			'votos_anulados' => (int) ( $totals['annulled_votes'] ?? 0 ),

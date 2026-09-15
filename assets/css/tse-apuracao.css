@@ -354,6 +354,146 @@
     }
 }
 
+/* [tse_apuracao_card] — card compacto com o líder de uma disputa.
+ * Marcação flat de propósito: cada classe faz uma coisa só, pra ser
+ * fácil de sobrescrever sem precisar entender o resto do componente.
+ */
+.tse-card {
+	font-family:   var(--tse-font);
+	background:    var(--tse-bg, #fff);
+	border:        1px solid var(--tse-border, #dde2ea);
+	border-radius: var(--tse-radius, 10px);
+	padding:       14px 16px;
+	max-width:     360px;
+}
+
+.tse-card-header {
+	display:         flex;
+	justify-content: space-between;
+	align-items:     baseline;
+	gap:             8px;
+	margin-bottom:   10px;
+}
+
+.tse-card-cargo {
+	font-weight: 700;
+	font-size:   13px;
+	color:       var(--tse-text, #1a2a3a);
+}
+
+.tse-card-pct {
+	font-size: 12px;
+	color:     var(--tse-muted, #5a6a7a);
+}
+
+.tse-card-vazio {
+	font-size: 13px;
+	color:     var(--tse-muted, #5a6a7a);
+	padding:   8px 0;
+}
+
+.tse-card-lider {
+	display:     flex;
+	align-items: center;
+	gap:         10px;
+}
+
+.tse-card-foto {
+	width:        44px;
+	height:       44px;
+	border-radius: 50%;
+	object-fit:   cover;
+	flex-shrink:  0;
+	background:   var(--tse-bg-alt, #f5f7fa);
+}
+
+.tse-card-info {
+	flex:     1;
+	min-width: 0;
+}
+
+.tse-card-nome-linha {
+	display:      flex;
+	align-items:  baseline;
+	gap:          6px;
+}
+
+.tse-card-numero {
+	font-family: var(--tse-mono);
+	font-weight: 700;
+	color:       var(--tse-primary, #003366);
+	font-size:   12px;
+}
+
+.tse-card-nome {
+	font-weight:    600;
+	font-size:      14px;
+	white-space:    nowrap;
+	overflow:       hidden;
+	text-overflow:  ellipsis;
+}
+
+.tse-card-partido {
+	font-size: 12px;
+	color:     var(--tse-muted, #5a6a7a);
+}
+
+.tse-card-percentual {
+	font-family: var(--tse-mono);
+	font-weight: 700;
+	font-size:   16px;
+	color:       var(--tse-text, #1a2a3a);
+	flex-shrink: 0;
+}
+
+.tse-card-lider.tse-eleito .tse-card-percentual { color: var(--tse-eleito); }
+.tse-card-lider.tse-segundo-turno .tse-card-percentual { color: var(--tse-turno2); }
+
+.tse-card-barra-wrap {
+	height:        5px;
+	background:    var(--tse-border, #dde2ea);
+	border-radius: 3px;
+	overflow:      hidden;
+	margin:        10px 0 8px;
+}
+
+.tse-card-barra {
+	height:     100%;
+	background: var(--tse-primary, #003366);
+}
+
+.tse-card-lider.tse-eleito ~ .tse-card-barra-wrap .tse-card-barra { background: var(--tse-eleito); }
+.tse-card-lider.tse-segundo-turno ~ .tse-card-barra-wrap .tse-card-barra { background: var(--tse-turno2); }
+
+.tse-card-rodape {
+	display:         flex;
+	justify-content: space-between;
+	align-items:     center;
+	gap:             8px;
+}
+
+/* [tse_apuracao_card limite=">1"]: N cards iguais lado a lado.
+ * Default simples de sobrescrever — passe `classe="sua-classe"` no shortcode
+ * para plugar num grid que já existe no tema (ela entra aqui, no elemento de fora). */
+.tse-card-grid {
+	display:  flex;
+	flex-wrap: wrap;
+	gap:      12px;
+}
+
+.tse-card-grid .tse-card { flex: 1 1 260px; }
+
+.tse-card-status-texto,
+.tse-card-atualizado {
+	font-size: 11px;
+	color:     var(--tse-muted, #5a6a7a);
+}
+
+.tse-card-atualizado.tse-dados-atrasados {
+	color:       #b45309;
+	font-weight: 600;
+}
+
 /* Candidate directory */
 .ae-catalog,.ae-candidate-profile{font-family:var(--tse-font,Arial,sans-serif);max-width:1180px;margin:32px auto;color:#172033}.ae-catalog-kicker{color:#0068b3;font-weight:700;text-transform:uppercase;letter-spacing:.08em}.ae-catalog h1,.ae-candidate-profile h1{font-size:clamp(28px,4vw,44px);margin:4px 0 10px}.ae-catalog-filters{display:grid;grid-template-columns:2fr 1fr .6fr 1fr auto;gap:10px;padding:18px;background:#f0f4f8;border-radius:12px;margin:24px 0}.ae-catalog-filters input,.ae-catalog-filters select,.ae-catalog-filters button{min-height:44px;border:1px solid #cbd5e1;border-radius:7px;padding:0 12px;font:inherit}.ae-catalog-filters button{background:#0068b3;color:#fff;border:0;font-weight:700;cursor:pointer}.ae-catalog-count{font-weight:600}.ae-catalog-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.ae-candidate-card{display:flex;gap:14px;border:1px solid #dbe3ec;border-radius:12px;padding:14px;background:#fff}.ae-candidate-card img,.ae-candidate-avatar,.ae-candidate-profile header img{width:76px;height:76px;border-radius:50%;object-fit:cover;background:#e8eef5;flex:0 0 76px}.ae-candidate-avatar{display:grid;place-items:center;font-size:28px}.ae-candidate-card h2{font-size:18px;margin:5px 0}.ae-candidate-card h2 a{color:#172033;text-decoration:none}.ae-candidate-card p,.ae-candidate-card small{margin:4px 0;color:#526174}.ae-candidate-number,.ae-candidate-profile header span{font-weight:800;color:#0068b3}.ae-catalog-empty{padding:24px;text-align:center;background:#f8fafc;border-radius:10px}.ae-candidate-profile>a{color:#0068b3;font-weight:700}.ae-candidate-profile header{display:flex;gap:20px;align-items:center;padding:28px 0;border-bottom:1px solid #dbe3ec}.ae-candidate-profile header img{width:130px;height:130px;flex-basis:130px}.ae-candidate-profile dl{display:grid;grid-template-columns:180px 1fr;gap:12px}.ae-candidate-profile dt{font-weight:700}.ae-candidate-profile dd{margin:0}@media(max-width:760px){.ae-catalog-filters{grid-template-columns:1fr}.ae-catalog-grid{grid-template-columns:1fr}.ae-candidate-profile header{align-items:flex-start}.ae-candidate-profile header img{width:90px;height:90px;flex-basis:90px}.ae-candidate-profile dl{grid-template-columns:1fr;gap:4px}}
 
