@@ -41,6 +41,10 @@ final class AE_TSE_Client {
 	public function collect_results( array $payload ): array {
 		$contest_id = absint( $payload['contest_id'] ?? 0 ); $url = esc_url_raw( $payload['source_url'] ?? '' ); $kind = strtoupper( sanitize_key( $payload['kind'] ?? 'EA20' ) );
 		if ( ! $contest_id || ! in_array( $kind, array( 'EA14', 'EA15', 'EA20' ), true ) || ! $this->allowed_url( $url ) ) { throw new RuntimeException( 'Coleta TSE invalida.' ); }
+		if ( ! $this->result_source_is_current( $contest_id, $url ) ) {
+			AE_Logger::write( 'info', 'stale_result_job_ignored', array( 'contest_id' => $contest_id, 'source_url' => $url ) );
+			return array( 'complete' => true, 'source_ignored' => true );
+		}
 		try {
 			$raw = $this->fetch_json( $url, true );
 		} catch ( AE_TSE_Source_Not_Found $e ) {
@@ -107,6 +111,17 @@ final class AE_TSE_Client {
 
 	private function get_json( string $url ): array { return $this->fetch_json( $url, false ) ?? array(); }
 
+	/** Ignore queued work after a source is disabled or replaced by a newer EA11 sync. */
+	private function result_source_is_current( int $contest_id, string $url ): bool {
+		global $wpdb;
+		$config_json = $wpdb->get_var( $wpdb->prepare( "SELECT config_json FROM {$wpdb->prefix}ae_contests WHERE id=%d AND active=1", $contest_id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		if ( null === $config_json ) { return false; }
+		$config = json_decode( (string) $config_json, true );
+		$collection = is_array( $config ) && is_array( $config['collection'] ?? null ) ? $config['collection'] : array();
+		if ( ! $collection ) { return true; }
+		return ! empty( $collection['enabled'] ) && esc_url_raw( (string) ( $collection['source_url'] ?? '' ) ) === $url;
+	}
+
 	/** Prevent one bad generated URL from re-entering the queue every minute. */
 	private function disable_missing_result_source( int $contest_id, string $url ): void {
 		global $wpdb;
@@ -115,6 +130,10 @@ final class AE_TSE_Client {
 		$config = json_decode( (string) $config_json, true );
 		if ( ! is_array( $config ) ) { $config = array(); }
 		$config['collection'] = is_array( $config['collection'] ?? null ) ? $config['collection'] : array();
+		if ( esc_url_raw( (string) ( $config['collection']['source_url'] ?? '' ) ) !== $url ) {
+			AE_Logger::write( 'info', 'stale_404_ignored', array( 'contest_id' => $contest_id, 'source_url' => $url ) );
+			return;
+		}
 		$config['collection']['enabled'] = false;
 		$config['collection']['disabled_reason'] = 'O TSE não publicou este arquivo (HTTP 404).';
 		$wpdb->update( $p . 'contests', array( 'config_json' => wp_json_encode( $config ) ), array( 'id' => $contest_id ) );

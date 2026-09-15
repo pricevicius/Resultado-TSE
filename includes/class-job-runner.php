@@ -26,7 +26,13 @@ final class AE_Job_Runner {
 			if ( absint( get_option( 'ae_tse_blocked_until', 0 ) ) > time() ) { return; }
 			$this->enqueue_due_collections();
 			$deadline = microtime( true ) + 40;
-			while ( microtime( true ) < $deadline && ( $job = $this->claim() ) ) { $this->run( $job ); }
+			while ( microtime( true ) < $deadline ) {
+				// A 403/429 received during this same cycle opens the breaker immediately.
+				if ( absint( get_option( 'ae_tse_blocked_until', 0 ) ) > time() ) { break; }
+				$job = $this->claim();
+				if ( ! $job ) { break; }
+				$this->run( $job );
+			}
 		} finally { wp_cache_delete( self::LOCK_KEY, 'apuracao-eleitoral' ); }
 	}
 

@@ -34,6 +34,8 @@ $uf_labels = [
 
 $titulo_final  = $titulo ?: ( ( $cargo_labels[ $cargo ] ?? ucfirst( $cargo ) ) . ' — ' . ( $uf_labels[ $uf ] ?? strtoupper( $uf ) ) );
 $pct_apurado   = $dados['pct_apurado'] ?? null;
+$pct_numero    = isset( $dados['pct_apurado_numero'] ) ? (float) $dados['pct_apurado_numero'] : (float) str_replace( ',', '.', (string) $pct_apurado );
+$dados_atrasados = ! empty( $dados['atrasado'] );
 $status        = $dados['status'] ?? '';
 $atualizado_em = $dados['atualizado_em'] ?? '';
 $candidatos    = $dados['candidatos'] ?? [];
@@ -61,8 +63,8 @@ $max_votos = max( $max_votos, 1 );
             <h2 class="tse-titulo"><?php echo esc_html( $titulo_final ); ?></h2>
             <?php if ( $pct_apurado ) : ?>
             <div class="tse-apurado">
-                <div class="tse-apurado-barra" role="progressbar" aria-valuenow="<?php echo esc_attr( (float) $pct_apurado ); ?>" aria-valuemin="0" aria-valuemax="100">
-                    <div class="tse-apurado-fill" style="width:<?php echo esc_attr( $pct_apurado ); ?>"></div>
+                <div class="tse-apurado-barra" role="progressbar" aria-valuenow="<?php echo esc_attr( $pct_numero ); ?>" aria-valuemin="0" aria-valuemax="100">
+                    <div class="tse-apurado-fill" style="width:<?php echo esc_attr( number_format( max( 0, min( 100, $pct_numero ) ), 2, '.', '' ) ); ?>%"></div>
                 </div>
                 <span class="tse-apurado-label"><?php echo esc_html( $pct_apurado ); ?> apurado</span>
             </div>
@@ -70,9 +72,9 @@ $max_votos = max( $max_votos, 1 );
         </div>
         <div class="tse-header-right">
             <?php if ( $atualizar > 0 ) : ?>
-            <span class="tse-ao-vivo" title="Atualização automática a cada <?php echo esc_attr( $atualizar ); ?> segundos">
+            <span class="tse-ao-vivo <?php echo $dados_atrasados ? 'tse-dados-atrasados' : ''; ?>" title="Atualização automática a cada <?php echo esc_attr( $atualizar ); ?> segundos">
                 <span class="tse-pulse" aria-hidden="true"></span>
-                Ao vivo
+                <span class="tse-live-label"><?php echo $dados_atrasados ? 'Dados atrasados' : 'Ao vivo'; ?></span>
             </span>
             <?php endif; ?>
             <?php if ( $status ) : ?>

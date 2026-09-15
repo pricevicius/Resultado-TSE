@@ -43,18 +43,23 @@
         const labelEl   = widget.querySelector( '.tse-apurado-label' );
         const pctBar    = widget.querySelector( '.tse-apurado-barra' );
 
-        if ( fillEl && data.pct_apurado ) {
-            fillEl.style.width = data.pct_apurado;
+        const pctNumber = Number.isFinite( Number( data.pct_apurado_numero ) )
+            ? Number( data.pct_apurado_numero )
+            : parseFloat( String( data.pct_apurado || '' ).replace( ',', '.' ) );
+        if ( fillEl && ! isNaN( pctNumber ) ) {
+            fillEl.style.width = Math.max( 0, Math.min( 100, pctNumber ) ) + '%';
         }
         if ( labelEl && data.pct_apurado ) {
             labelEl.textContent = data.pct_apurado + ' apurado';
         }
-        if ( pctBar && data.pct_apurado ) {
-            const val = parseFloat( data.pct_apurado );
-            if ( ! isNaN( val ) ) {
-                pctBar.setAttribute( 'aria-valuenow', val );
-            }
+        if ( pctBar && ! isNaN( pctNumber ) ) {
+            pctBar.setAttribute( 'aria-valuenow', pctNumber );
         }
+
+		const liveEl = widget.querySelector( '.tse-ao-vivo' );
+		const liveLabelEl = widget.querySelector( '.tse-live-label' );
+		if ( liveEl ) liveEl.classList.toggle( 'tse-dados-atrasados', Boolean( data.atrasado ) );
+		if ( liveLabelEl ) liveLabelEl.textContent = data.atrasado ? 'Dados atrasados' : 'Ao vivo';
 
         // Atualiza status
         const statusEl = widget.querySelector( '.tse-status' );

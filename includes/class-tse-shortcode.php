@@ -2,6 +2,7 @@
 defined( 'ABSPATH' ) || exit;
 
 class TSE_Shortcode {
+	private static bool $assets_localized = false;
 
     public static function init(): void {
         add_shortcode( 'tse_apuracao', [ __CLASS__, 'render' ] );
@@ -40,12 +41,15 @@ class TSE_Shortcode {
             true
         );
 
-        wp_localize_script( 'tse-live', 'TSEConfig', [
-            'restUrl'     => rest_url( 'tse/v1/resultado' ),
-            'nonce'       => wp_create_nonce( 'wp_rest' ),
-            'corPrimaria' => $opts['cor_primaria'] ?? '#003366',
-            'corEleito'   => $opts['cor_eleito']   ?? '#007A33',
-        ] );
+		if ( ! self::$assets_localized ) {
+			wp_localize_script( 'tse-live', 'TSEConfig', [
+				'restUrl'     => rest_url( 'tse/v1/resultado' ),
+				'nonce'       => wp_create_nonce( 'wp_rest' ),
+				'corPrimaria' => $opts['cor_primaria'] ?? '#003366',
+				'corEleito'   => $opts['cor_eleito']   ?? '#007A33',
+			] );
+			self::$assets_localized = true;
+		}
     }
 
     public static function register_rest_route(): void {
@@ -165,6 +169,8 @@ class TSE_Shortcode {
         $total = (int) ( $totals['total_sections'] ?? 0 );
 		$pct_number = isset( $totals['reported_percentage'] ) ? (float) $totals['reported_percentage'] : ( $total > 0 ? ( $reported / $total ) * 100 : 0 );
 		$pct = number_format_i18n( $pct_number, 2 ) . '%';
+		$captured_at = (string) ( $data['snapshot']['captured_at'] ?? '' );
+		$captured_timestamp = $captured_at ? strtotime( $captured_at ) : false;
         $candidates = array_map( static function ( array $candidate ): array {
             return array(
                 'numero' => (string) ( $candidate['ballot_number'] ?? '' ),
@@ -183,6 +189,8 @@ class TSE_Shortcode {
             'horario' => $data['snapshot']['generated_at'] ?? '',
 			'status' => ( $totals['progress'] ?? '' ) === 'final' ? 'Totalizado' : ( ( $totals['progress'] ?? '' ) === 'not_started' ? 'Aguardando apuração' : 'Parcial' ),
             'pct_apurado' => $pct,
+			'pct_apurado_numero' => round( $pct_number, 2 ),
+			'atrasado' => ! $captured_timestamp || $captured_timestamp < time() - 3 * MINUTE_IN_SECONDS,
             'turno' => (string) $turno,
             'candidatos' => $candidates,
         );
