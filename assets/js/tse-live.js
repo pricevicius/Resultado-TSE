@@ -25,13 +25,22 @@
         const limite  = widget.dataset.limite || 10;
 		const turno   = widget.dataset.turno || 1;
 		const url     = `${ restUrl }?cargo=${ encodeURIComponent( cargo ) }&uf=${ encodeURIComponent( uf ) }&turno=${ turno }&limite=${ limite }`;
-		const apply   = widget.classList.contains( 'tse-card' ) ? applyCardUpdate : applyUpdate;
+		const apply   = widget.classList.contains( 'tse-card-secao' ) ? applySecaoUpdate
+			: widget.classList.contains( 'tse-card' ) ? applyCardUpdate
+			: applyUpdate;
 
         fetch( url, { headers: { 'X-WP-Nonce': nonce } } )
             .then( r => r.ok ? r.json() : Promise.reject( r.status ) )
 			.then( data => apply( widget, data ) )
             .catch( () => {} ); // falha silenciosa — mantém conteúdo anterior
     }
+
+	// [tse_apuracao_card limite=">1"]: cabeçalho único (título + % apurado) para a grade toda.
+	function applySecaoUpdate( widget, data ) {
+		if ( ! data ) return;
+		const pctEl = widget.querySelector( '.tse-card-secao-pct' );
+		if ( pctEl && data.pct_apurado ) pctEl.textContent = data.pct_apurado + ' apurado';
+	}
 
 	function createCardBadge( c, status ) {
 		if ( c.eleito ) {
@@ -218,5 +227,5 @@
     }
 
     // Inicializa todos os widgets na página
-    document.querySelectorAll( '.tse-apuracao-widget, .tse-card' ).forEach( initWidget );
+    document.querySelectorAll( '.tse-apuracao-widget, .tse-card, .tse-card-secao' ).forEach( initWidget );
 } )();

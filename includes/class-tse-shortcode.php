@@ -104,12 +104,14 @@ class TSE_Shortcode {
      */
     public static function render( $atts ): string {
 		self::enqueue_widget_assets();
+        // Aceita 'title' como sinônimo de 'titulo' — engano comum de quem está acostumado a atributos em inglês.
+        $titulo_informado = is_array( $atts ) ? ( $atts['titulo'] ?? $atts['title'] ?? '' ) : '';
         $atts = shortcode_atts( [
             'cargo'     => 'presidente',
             'uf'        => 'br',
             'limite'    => 10,
             'atualizar' => 60,
-            'titulo'    => '',
+            'titulo'    => $titulo_informado,
             'turno'     => 1,
         ], $atts, 'tse_apuracao' );
 
@@ -162,13 +164,15 @@ class TSE_Shortcode {
      */
     public static function render_card( $atts ): string {
         self::enqueue_widget_assets();
+        // Aceita 'title' como sinônimo de 'titulo' — engano comum de quem está acostumado a atributos em inglês.
+        $titulo_informado = is_array( $atts ) ? ( $atts['titulo'] ?? $atts['title'] ?? '' ) : '';
         $atts = shortcode_atts( [
             'cargo'     => 'presidente',
             'uf'        => 'br',
             'turno'     => 1,
             'limite'    => 1,
             'atualizar' => 60,
-            'titulo'    => '',
+            'titulo'    => $titulo_informado,
             'classe'    => '',
         ], $atts, 'tse_apuracao_card' );
 

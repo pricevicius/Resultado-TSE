@@ -27,7 +27,7 @@ $badge = static function ( array $c ) use ( $status ): string {
 	return '';
 };
 
-$renderiza_card = function ( int $posicao, ?array $c, string $classe_card = '' ) use ( $widget_id, $cargo, $uf, $turno, $limite, $atualizar, $rotulo_cargo, $erro, $dados, $badge, $barra_pct, $atrasado, $status ): void {
+$renderiza_card = function ( int $posicao, ?array $c, string $classe_card = '', bool $mostrar_header = true ) use ( $widget_id, $cargo, $uf, $turno, $limite, $atualizar, $rotulo_cargo, $erro, $dados, $badge, $barra_pct, $atrasado, $status ): void {
 	?>
 	<div id="<?php echo esc_attr( $widget_id . '-' . $posicao ); ?>"
 		class="tse-card <?php echo $classe_card ? esc_attr( $classe_card ) : ''; ?>"
@@ -38,12 +38,14 @@ $renderiza_card = function ( int $posicao, ?array $c, string $classe_card = '' )
 		data-limite="<?php echo esc_attr( max( $limite, $posicao + 1 ) ); ?>"
 		data-atualizar="<?php echo esc_attr( $atualizar ); ?>">
 
+		<?php if ( $mostrar_header ) : ?>
 		<div class="tse-card-header">
 			<span class="tse-card-cargo"><?php echo esc_html( $rotulo_cargo ); ?></span>
 			<?php if ( ! $erro ) : ?>
 			<span class="tse-card-pct"><?php echo esc_html( $dados['pct_apurado'] ?? '0%' ); ?> apurado</span>
 			<?php endif; ?>
 		</div>
+		<?php endif; ?>
 
 		<?php if ( $erro ) : ?>
 		<div class="tse-card-vazio"><?php echo esc_html( $erro ); ?></div>
@@ -85,8 +87,24 @@ if ( count( $candidatos ) <= 1 ) {
 	$renderiza_card( 0, $candidatos[0] ?? null, $classe_extra );
 } else {
 	?>
-	<div class="tse-card-grid <?php echo $classe_extra ? esc_attr( $classe_extra ) : ''; ?>">
-		<?php foreach ( $candidatos as $i => $c ) { $renderiza_card( $i, $c ); } ?>
+	<div id="<?php echo esc_attr( $widget_id ); ?>"
+		class="tse-card-secao <?php echo $classe_extra ? esc_attr( $classe_extra ) : ''; ?>"
+		data-cargo="<?php echo esc_attr( $cargo ); ?>"
+		data-uf="<?php echo esc_attr( $uf ); ?>"
+		data-turno="<?php echo esc_attr( $turno ); ?>"
+		data-limite="<?php echo esc_attr( $limite ); ?>"
+		data-atualizar="<?php echo esc_attr( $atualizar ); ?>">
+
+		<header class="apuracao__header">
+			<h2><?php echo esc_html( $rotulo_cargo ); ?></h2>
+			<?php if ( ! $erro ) : ?>
+			<span class="tse-card-secao-pct"><?php echo esc_html( $dados['pct_apurado'] ?? '0%' ); ?> apurado</span>
+			<?php endif; ?>
+		</header>
+
+		<div class="tse-card-grid">
+			<?php foreach ( $candidatos as $i => $c ) { $renderiza_card( $i, $c, '', false ); } ?>
+		</div>
 	</div>
 	<?php
 }

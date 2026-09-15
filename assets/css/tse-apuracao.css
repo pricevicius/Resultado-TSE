@@ -472,9 +472,27 @@
 	gap:             8px;
 }
 
-/* [tse_apuracao_card limite=">1"]: N cards iguais lado a lado.
- * Default simples de sobrescrever — passe `classe="sua-classe"` no shortcode
- * para plugar num grid que já existe no tema (ela entra aqui, no elemento de fora). */
+/* [tse_apuracao_card limite=">1"]: título e "% apurado" aparecem uma vez só,
+ * para a disputa inteira — não repetidos em cada card. Mesmo padrão de
+ * cabeçalho de seção usado no resto do site (<header class="apuracao__header">
+ * com <h2> dentro); a tipografia do h2 vem do tema, aqui só o layout do badge. */
+.apuracao__header {
+	display:         flex;
+	justify-content: space-between;
+	align-items:     baseline;
+	gap:             8px;
+	margin-bottom:   10px;
+}
+
+.tse-card-secao-pct {
+	font-size: 12px;
+	color:     var(--tse-muted, #5a6a7a);
+	flex-shrink: 0;
+}
+
+/* N cards iguais lado a lado. Default simples de sobrescrever — passe
+ * `classe="sua-classe"` no shortcode para plugar num grid que já existe no
+ * tema (ela entra no elemento de fora: `.tse-card-secao` ou este `.tse-card-grid`). */
 .tse-card-grid {
 	display:  flex;
 	flex-wrap: wrap;
