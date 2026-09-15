@@ -26,6 +26,7 @@ final class AE_Plugin {
 		if ( ! wp_next_scheduled( 'ae_run_jobs' ) ) {
 			wp_schedule_event( time() + 60, 'ae_minute', 'ae_run_jobs' );
 		}
+		set_transient( 'ae_activation_redirect', 1, MINUTE_IN_SECONDS );
 	}
 
 	public static function deactivate(): void {
@@ -48,7 +49,16 @@ final class AE_Plugin {
 		add_action( 'init', array( $this, 'register_blocks' ) );
 		if ( is_admin() ) {
 			AE_Admin::instance()->register();
+			add_action( 'admin_init', array( $this, 'redirect_after_activation' ) );
 		}
+	}
+
+	/** Sends a newly activated plugin directly to its operational checklist. */
+	public function redirect_after_activation(): void {
+		if ( ! get_transient( 'ae_activation_redirect' ) || wp_doing_ajax() || ! current_user_can( 'manage_options' ) || isset( $_GET['activate-multi'] ) ) { return; } // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		delete_transient( 'ae_activation_redirect' );
+		wp_safe_redirect( admin_url( 'admin.php?page=apuracao-eleitoral' ) );
+		exit;
 	}
 
 	public function minute_schedule( array $schedules ): array {
