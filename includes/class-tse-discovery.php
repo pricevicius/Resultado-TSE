@@ -4,10 +4,14 @@ defined( 'ABSPATH' ) || exit;
 /** Discovers official TSE files. Editors never need to assemble or paste a URL. */
 final class AE_TSE_Discovery {
 	private const CANDIDATES_URL = 'https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_cand/consulta_cand_%d.zip';
+	private const UFS = array(
+		'ac' => 'Acre', 'al' => 'Alagoas', 'ap' => 'Amapá', 'am' => 'Amazonas', 'ba' => 'Bahia', 'ce' => 'Ceará', 'df' => 'Distrito Federal', 'es' => 'Espírito Santo', 'go' => 'Goiás', 'ma' => 'Maranhão', 'mt' => 'Mato Grosso', 'ms' => 'Mato Grosso do Sul', 'mg' => 'Minas Gerais', 'pa' => 'Pará', 'pb' => 'Paraíba', 'pr' => 'Paraná', 'pe' => 'Pernambuco', 'pi' => 'Piauí', 'rj' => 'Rio de Janeiro', 'rn' => 'Rio Grande do Norte', 'rs' => 'Rio Grande do Sul', 'ro' => 'Rondônia', 'rr' => 'Roraima', 'sc' => 'Santa Catarina', 'sp' => 'São Paulo', 'se' => 'Sergipe', 'to' => 'Tocantins',
+	);
 
 	public static function environment( string $environment ): array {
 		if ( 'simulado' === sanitize_key( $environment ) ) {
-			return array( 'name' => 'simulado', 'base' => 'https://resultados-sim.tse.jus.br' );
+			// The TSE's 2026 simulation is published below this versioned path.
+			return array( 'name' => 'simulado/simulado2026', 'base' => 'https://resultados-sim.tse.jus.br' );
 		}
 		return array( 'name' => 'oficial', 'base' => 'https://resultados.tse.jus.br' );
 	}
@@ -24,9 +28,6 @@ final class AE_TSE_Discovery {
 	public static function sync( array $payload ): array {
 		$environment = sanitize_key( $payload['environment'] ?? 'oficial' );
 		$year = max( 2022, absint( $payload['year'] ?? 2026 ) );
-		if ( 'simulado' === $environment ) {
-			throw new RuntimeException( 'O TSE ainda não publicou a URL do ambiente simulado de 2026. Nenhuma requisição foi enviada para evitar respostas 404 e risco de bloqueio.' );
-		}
 		$url = self::config_url( $environment );
 		$catalog = AE_TSE_Client::instance()->fetch_json( $url, false );
 		if ( empty( $catalog['pl'] ) || ! is_array( $catalog['pl'] ) ) {
@@ -40,7 +41,8 @@ final class AE_TSE_Discovery {
 			if ( ! is_array( $pleito ) || ! self::is_year( $pleito, $year ) ) { continue; }
 			foreach ( (array) ( $pleito['e'] ?? array() ) as $election ) {
 				if ( ! is_array( $election ) || ! self::is_year( $election, $year ) ) { continue; }
-				self::save_election( $environment, $cycle, $files, $pleito, $election, $year );
+				// In the current EA11, the cycle belongs to each pleito, not the root object.
+				self::save_election( $environment, sanitize_text_field( (string) ( $pleito['c'] ?? $cycle ) ), $files, $pleito, $election, $year );
 				$matched++;
 			}
 		}
@@ -72,15 +74,32 @@ final class AE_TSE_Discovery {
 			$scope_code = strtolower( sanitize_key( $scope['cd'] ?? '' ) );
 			foreach ( (array) ( $scope['cp'] ?? array() ) as $position ) {
 				$position_code = str_pad( (string) absint( $position['cd'] ?? 0 ), 4, '0', STR_PAD_LEFT );
-				if ( '0000' === $position_code || ! $scope_code ) { continue; }
-				$source_url = self::result_url( $environment, $cycle, $tse_code, $scope_code, $position_code, $files );
-				$contest_config = array( 'collection' => array( 'source_url' => $source_url, 'kind' => 'EA20', 'interval' => 60, 'enabled' => true, 'managed' => true ) );
-				$seats = '0005' === $position_code ? 2 : 1;
-				$external = $tse_code . '-r' . $round . '-' . $position_code . '-' . strtoupper( $scope_code );
-				$sql = $wpdb->prepare( "INSERT INTO {$p}contests (election_id,external_id,round_no,position_code,position_name,scope_type,scope_code,scope_name,seats,active,config_json) VALUES (%d,%s,%d,%s,%s,%s,%s,%s,%d,1,%s) ON DUPLICATE KEY UPDATE position_name=VALUES(position_name),seats=VALUES(seats),active=1,config_json=VALUES(config_json)", $id, $external, $round, $position_code, sanitize_text_field( $position['ds'] ?? $position_code ), 'br' === $scope_code ? 'BR' : 'UF', strtoupper( $scope_code ), 'br' === $scope_code ? 'Brasil' : strtoupper( $scope_code ), $seats, wp_json_encode( $contest_config ) );
-				$wpdb->query( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+				if ( ! $scope_code || ! self::supports_position( $position_code ) ) { continue; }
+				foreach ( self::contest_scopes( $scope_code, $position_code ) as $contest_scope ) {
+					$source_url = self::result_url( $environment, $cycle, $tse_code, $contest_scope, $position_code, $files );
+					$contest_config = array( 'collection' => array( 'source_url' => $source_url, 'kind' => 'EA20', 'interval' => 60, 'enabled' => true, 'managed' => true ) );
+					$seats = '0005' === $position_code ? 2 : 1;
+					$external = $tse_code . '-r' . $round . '-' . $position_code . '-' . strtoupper( $contest_scope );
+					$scope_type = 'br' === $contest_scope ? 'BR' : 'UF';
+					$scope_name = 'br' === $contest_scope ? 'Brasil' : ( self::UFS[ $contest_scope ] ?? strtoupper( $contest_scope ) );
+					$sql = $wpdb->prepare( "INSERT INTO {$p}contests (election_id,external_id,round_no,position_code,position_name,scope_type,scope_code,scope_name,seats,active,config_json) VALUES (%d,%s,%d,%s,%s,%s,%s,%s,%d,1,%s) ON DUPLICATE KEY UPDATE position_name=VALUES(position_name),seats=VALUES(seats),active=1,config_json=VALUES(config_json)", $id, $external, $round, $position_code, sanitize_text_field( $position['ds'] ?? $position_code ), $scope_type, strtoupper( $contest_scope ), $scope_name, $seats, wp_json_encode( $contest_config ) );
+					$wpdb->query( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+				}
 			}
 		}
+	}
+
+	/** EA11 lists state-wide positions under BR; their EA20 snapshots are stored per UF. */
+	private static function contest_scopes( string $scope, string $position ): array {
+		if ( 'br' !== $scope ) { return array( $scope ); }
+		if ( in_array( $position, array( '0003', '0005', '0006', '0007' ), true ) ) { return array_keys( self::UFS ); }
+		if ( '0008' === $position ) { return array( 'df' ); }
+		return array( $scope );
+	}
+
+	/** Only synchronize roles the public widget can render. */
+	private static function supports_position( string $position ): bool {
+		return in_array( $position, array( '0001', '0003', '0005', '0006', '0007', '0008', '0011', '0013' ), true );
 	}
 
 	private static function result_url( string $environment, string $cycle, int $election, string $scope, string $position, array $files ): string {

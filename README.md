@@ -6,7 +6,7 @@ Plugin WordPress para importar candidatos e publicar resultados eleitorais do TS
 
 1. Instale e ative a pasta em `wp-content/plugins/tse-apuracao`.
 2. Abra **Apuração > Configuração**.
-3. Escolha **Oficial** e clique em **Sincronizar configuração do TSE**. O modo Simulado será liberado quando o TSE publicar sua URL oficial.
+3. Escolha **Simulado 2026** para validar a integracao, ou **Oficial** quando o catalogo de producao estiver disponivel; clique em **Sincronizar configuracao do TSE**.
 4. Em **Importar e coletar**, selecione a eleição e clique em **Buscar e importar candidatos**.
 5. Insira o bloco **Apuração eleitoral** ou use o shortcode:
 

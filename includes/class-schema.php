@@ -4,6 +4,17 @@ defined( 'ABSPATH' ) || exit;
 final class AE_Schema {
 	public const VERSION = '2.0.2';
 
+	/** Checks both the migration marker and the physical tables before use. */
+	public static function is_ready(): bool {
+		global $wpdb;
+		$p = $wpdb->prefix . 'ae_';
+		$required = array( 'elections', 'contests', 'candidates', 'snapshots', 'result_rows', 'jobs', 'logs' );
+		foreach ( $required as $table ) {
+			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $p . $table ) ) !== $p . $table ) { return false; }
+		}
+		return self::VERSION === get_option( 'ae_schema_version' );
+	}
+
 	public static function install(): void {
 		global $wpdb;
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';

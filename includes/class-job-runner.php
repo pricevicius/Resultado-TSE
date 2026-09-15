@@ -22,6 +22,8 @@ final class AE_Job_Runner {
 	public function tick(): void {
 		if ( ! wp_cache_add( self::LOCK_KEY, 1, 'apuracao-eleitoral', self::LOCK_TTL ) ) { return; }
 		try {
+			// Do not create or retry a burst of jobs while the TSE circuit breaker is active.
+			if ( absint( get_option( 'ae_tse_blocked_until', 0 ) ) > time() ) { return; }
 			$this->enqueue_due_collections();
 			$deadline = microtime( true ) + 40;
 			while ( microtime( true ) < $deadline && ( $job = $this->claim() ) ) { $this->run( $job ); }

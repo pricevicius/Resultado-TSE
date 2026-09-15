@@ -163,9 +163,13 @@ final class AE_TSE_Client {
 		$offset = absint( $cursor['offset'] ?? 0 );
 		$path = get_transient( 'ae_import_file_' . $job_id );
 		if ( ! $path || ! is_readable( $path ) ) {
-			require_once ABSPATH . 'wp-admin/includes/file.php';
-			$path = download_url( $url, 300 );
-			if ( is_wp_error( $path ) ) { throw new RuntimeException( $path->get_error_message() ); }
+			$path = wp_tempnam( $url );
+			if ( ! $path ) { throw new RuntimeException( 'Não foi possível preparar o arquivo de candidatos.' ); }
+			$response = wp_remote_get( $url, array( 'timeout' => 300, 'redirection' => 2, 'stream' => true, 'filename' => $path, 'headers' => array( 'Accept' => 'application/zip,application/octet-stream', 'User-Agent' => 'WordPress Apuracao Eleitoral/' . AE_VERSION ) ) );
+			if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) {
+				wp_delete_file( $path );
+				throw new RuntimeException( is_wp_error( $response ) ? $response->get_error_message() : 'Dados Abertos do TSE respondeu HTTP ' . wp_remote_retrieve_response_code( $response ) . '.' );
+			}
 			set_transient( 'ae_import_file_' . $job_id, $path, DAY_IN_SECONDS );
 		}
 		$stream = null; $zip = null; $entry = absint( $cursor['entry'] ?? 0 ); $csv_names = array();

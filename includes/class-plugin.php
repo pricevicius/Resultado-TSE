@@ -7,6 +7,7 @@ require_once AE_DIR . 'includes/class-job-runner.php';
 require_once AE_DIR . 'includes/class-tse-client.php';
 require_once AE_DIR . 'includes/class-tse-discovery.php';
 require_once AE_DIR . 'includes/class-results.php';
+require_once AE_DIR . 'includes/class-candidate-catalog.php';
 require_once AE_DIR . 'includes/class-rest.php';
 require_once AE_DIR . 'includes/class-shortcodes.php';
 require_once AE_DIR . 'includes/class-admin.php';
@@ -33,9 +34,10 @@ final class AE_Plugin {
 
 	public function boot(): void {
 		add_filter( 'cron_schedules', array( $this, 'minute_schedule' ) );
-		if ( AE_Schema::VERSION !== get_option( 'ae_schema_version' ) ) {
+		// The option alone is not reliable after a partial restore or failed activation.
+		if ( ! AE_Schema::is_ready() ) {
 			AE_Schema::install();
-			if ( AE_Schema::VERSION === get_option( 'ae_schema_version' ) ) { self::seed_2026(); }
+			if ( AE_Schema::is_ready() ) { self::seed_2026(); }
 		}
 		if ( ! wp_next_scheduled( 'ae_run_jobs' ) ) {
 			wp_schedule_event( time() + 60, 'ae_minute', 'ae_run_jobs' );

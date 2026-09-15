@@ -17,11 +17,8 @@ if ( 'final' !== $final['totals']['progress'] || ! $final['totals']['final'] || 
 if ( 'https://resultados.tse.jus.br/oficial/comum/config/ele-c.json' !== AE_TSE_Discovery::config_url( 'oficial' ) ) {
 	throw new RuntimeException( 'Official EA11 URL contract failed.' );
 }
-try {
-	AE_TSE_Discovery::sync( array( 'environment' => 'simulado', 'year' => 2026 ) );
-	throw new RuntimeException( 'Simulation guard was not triggered.' );
-} catch ( RuntimeException $error ) {
-	if ( ! str_contains( $error->getMessage(), 'ainda não publicou' ) ) { throw $error; }
+if ( 'https://resultados-sim.tse.jus.br/simulado/simulado2026/comum/config/ele-c.json' !== AE_TSE_Discovery::config_url( 'simulado' ) ) {
+	throw new RuntimeException( 'Simulation EA11 URL contract failed.' );
 }
 if ( ! str_ends_with( AE_TSE_Discovery::candidates_url( 2026 ), '/consulta_cand_2026.zip' ) ) {
 	throw new RuntimeException( 'Candidate package URL contract failed.' );
@@ -31,6 +28,10 @@ $url_method->setAccessible( true );
 $result_url = $url_method->invoke( null, 'oficial', 'ele2026', 999, 'es', '0003', array( array( 'tp' => 'u', 'dir' => '<base>/<ambiente>/<ciclo>/<cd_eleicao>/dados/<uf>' ) ) );
 if ( 'https://resultados.tse.jus.br/oficial/ele2026/999/dados/es/es-c0003-e000999-u.json' !== $result_url ) {
 	throw new RuntimeException( 'EA20 URL template contract failed.' );
+}
+$simulation_result_url = $url_method->invoke( null, 'simulado', 'ele2026', 21272, 'ac', '0003', array( array( 'tp' => 'u', 'dir' => '<base>/<ambiente>/<ciclo>/<cd_eleicao>/dados/<uf>' ) ) );
+if ( 'https://resultados-sim.tse.jus.br/simulado/simulado2026/ele2026/21272/dados/ac/ac-c0003-e021272-u.json' !== $simulation_result_url ) {
+	throw new RuntimeException( 'Simulation EA20 URL template contract failed.' );
 }
 $widget = do_shortcode( '[apuracao cargo="0003" abrangencia="ES" turno="1"]' );
 if ( ! str_contains( $widget, 'tse-apuracao-widget' ) || ! wp_script_is( 'tse-live', 'enqueued' ) ) {
