@@ -6,6 +6,8 @@
 .tse-apuracao-widget {
     --tse-primary:    #003366;
     --tse-eleito:     #007A33;
+    --tse-turno2:     #A16207;
+    --tse-turno2-bg:  #FEF3C7;
     --tse-bg:         #ffffff;
     --tse-bg-alt:     #f5f7fa;
     --tse-border:     #dde2ea;
@@ -249,6 +251,13 @@
 	color: #50575e;
 	font-size: 11px;
 	font-weight: 700;
+}
+
+/* Situação "2º turno": distinta de "Não eleito" — o candidato ainda disputa, não está fora. */
+.tse-badge-turno2 {
+	background: var(--tse-turno2-bg);
+	color: var(--tse-turno2);
+	border: 1px solid color-mix(in srgb, var(--tse-turno2) 35%, transparent);
 }
 
 .tse-cand-barra-wrap {

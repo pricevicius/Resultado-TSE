@@ -172,6 +172,7 @@ class TSE_Shortcode {
 		$captured_at = (string) ( $data['snapshot']['captured_at'] ?? '' );
 		$captured_timestamp = $captured_at ? strtotime( $captured_at ) : false;
         $candidates = array_map( static function ( array $candidate ): array {
+            $situacao = (string) ( $candidate['situation'] ?? '' );
             return array(
                 'numero' => (string) ( $candidate['ballot_number'] ?? '' ),
                 'nome' => (string) ( $candidate['ballot_name'] ?: $candidate['full_name'] ?: $candidate['external_candidate_id'] ),
@@ -179,7 +180,9 @@ class TSE_Shortcode {
                 'votos' => (int) $candidate['votes'],
                 'percentual' => number_format_i18n( (float) $candidate['percentage'], 2 ) . '%',
                 'eleito' => (bool) $candidate['elected'],
-                'situacao' => (string) ( $candidate['situation'] ?? '' ),
+                'situacao' => $situacao,
+                // Sinalizador explicito para o front nao precisar adivinhar pelo texto livre de 'situacao'.
+                'segundo_turno' => false !== mb_stripos( $situacao, 'turno' ),
                 'foto_url' => (string) ( $candidate['photo_url'] ?? '' ),
                 'sequencia' => (int) ( $candidate['rank_no'] ?? 0 ),
             );
@@ -191,6 +194,10 @@ class TSE_Shortcode {
             'pct_apurado' => $pct,
 			'pct_apurado_numero' => round( $pct_number, 2 ),
 			'atrasado' => ! $captured_timestamp || $captured_timestamp < time() - 3 * MINUTE_IN_SECONDS,
+			'votos_brancos' => (int) ( $totals['blank_votes'] ?? 0 ),
+			'votos_nulos' => (int) ( $totals['null_votes'] ?? 0 ),
+			'votos_anulados' => (int) ( $totals['annulled_votes'] ?? 0 ),
+			'pct_votos_anulados' => round( (float) ( $totals['annulled_percentage'] ?? 0 ), 2 ),
             'turno' => (string) $turno,
             'candidatos' => $candidates,
         );

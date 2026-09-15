@@ -91,6 +91,11 @@
 			}
             if ( ! li ) return;
 
+			// Reordena o <li> para a posição atual: o polling só reaproveita nós
+			// existentes (chave = numero de urna) e sem isto a ordem do DOM
+			// congela na primeira renderização, dessincronizando do ranking.
+			if ( list ) { list.appendChild( li ); }
+
             const numEl  = li.querySelector( '.tse-votos-num' );
             const pctEl  = li.querySelector( '.tse-votos-pct' );
             const barEl  = li.querySelector( '.tse-cand-barra' );
@@ -120,8 +125,11 @@
 				if ( data.status === 'Totalizado' && cand.situacao ) {
 					if ( ! badge ) { badge = document.createElement( 'span' ); badge.className = 'tse-badge-status'; li.querySelector( '.tse-cand-top' )?.appendChild( badge ); }
 					badge.textContent = cand.situacao;
+					badge.classList.toggle( 'tse-badge-turno2', Boolean( cand.segundo_turno ) );
 				} else { badge?.remove(); }
             }
+			li.classList.toggle( 'tse-segundo-turno', Boolean( cand.segundo_turno ) );
+			li.dataset.situacao = cand.situacao || '';
         } );
 
         // Feedback visual de atualização

@@ -78,13 +78,18 @@ final class AE_TSE_Client {
 			$id = (string) ( $item['sqcand'] ?? $item['id'] ?? $item['sequencial'] ?? '' );
 			if ( '' === $id ) { continue; }
 			$status = sanitize_text_field( $item['st'] ?? $item['situacao'] ?? '' );
-			$elected = array_key_exists( 'e', $item ) ? ( 's' === strtolower( (string) $item['e'] ) ? 1 : 0 ) : ( str_starts_with( strtoupper( $status ), 'ELEITO' ) ? 1 : 0 );
+			// O TSE usa cand.e=s tambem para quem apenas avanca ao 2º turno; so ha eleito de fato apos a totalizacao do turno.
+			$runoff = false !== mb_stripos( $status, 'turno' );
+			$elected = $runoff ? 0 : ( array_key_exists( 'e', $item ) ? ( 's' === strtolower( (string) $item['e'] ) ? 1 : 0 ) : ( str_starts_with( strtoupper( $status ), 'ELEITO' ) ? 1 : 0 ) );
 			$candidates[] = array( 'external_id' => $id, 'rank' => absint( $item['seq'] ?? $item['posicao'] ?? ( $index + 1 ) ), 'votes' => $this->integer( $item['vap'] ?? $item['votos'] ?? 0 ), 'percentage' => $this->decimal( $item['pvap'] ?? $item['percentual'] ?? 0 ), 'elected' => $elected, 'situation' => $status, 'ballot_name' => sanitize_text_field( $item['nmu'] ?? $item['nomeUrna'] ?? '' ), 'full_name' => sanitize_text_field( $item['nm'] ?? $item['nomeCompleto'] ?? '' ), 'ballot_number' => sanitize_text_field( (string) ( $item['n'] ?? $item['numero'] ?? '' ) ), 'party' => sanitize_text_field( $item['_party'] ?? $item['partido'] ?? '' ) );
 		}
 		$sections = is_array( $raw['s'] ?? null ) ? $raw['s'] : array();
 		$votes = is_array( $raw['v'] ?? null ) ? $raw['v'] : ( is_array( $raw['tot'] ?? null ) ? $raw['tot'] : array() );
 		$progress = strtolower( (string) ( $raw['and'] ?? '' ) );
-		return array( 'generated_at' => $this->date_or_null( trim( (string) ( $raw['dg'] ?? $raw['dt'] ?? $raw['data'] ?? '' ) . ' ' . (string) ( $raw['hg'] ?? '' ) ) ), 'totals' => array( 'total_votes' => $this->integer( $raw['total'] ?? $votes['tv'] ?? $raw['totalVotos'] ?? 0 ), 'reported_sections' => $this->integer( $sections['st'] ?? $raw['secoesTotalizadas'] ?? 0 ), 'total_sections' => $this->integer( $sections['ts'] ?? $raw['totalSecoes'] ?? 0 ), 'reported_percentage' => $this->decimal( $sections['pst'] ?? $raw['pst'] ?? 0 ), 'progress' => array( 'n' => 'not_started', 'p' => 'partial', 'f' => 'final' )[ $progress ] ?? 'unknown', 'final' => 'f' === $progress || 's' === strtolower( (string) ( $raw['tf'] ?? '' ) ), 'mathematically_defined' => sanitize_key( $raw['md'] ?? 'n' ), 'source_format' => $kind, 'tse_generation_id' => sanitize_text_field( (string) ( $raw['idg'] ?? '' ) ) ), 'candidates' => $candidates );
+		return array( 'generated_at' => $this->date_or_null( trim( (string) ( $raw['dg'] ?? $raw['dt'] ?? $raw['data'] ?? '' ) . ' ' . (string) ( $raw['hg'] ?? '' ) ) ), 'totals' => array( 'total_votes' => $this->integer( $raw['total'] ?? $votes['tv'] ?? $raw['totalVotos'] ?? 0 ), 'reported_sections' => $this->integer( $sections['st'] ?? $raw['secoesTotalizadas'] ?? 0 ), 'total_sections' => $this->integer( $sections['ts'] ?? $raw['totalSecoes'] ?? 0 ), 'reported_percentage' => $this->decimal( $sections['pst'] ?? $raw['pst'] ?? 0 ),
+			// TSE distingue votos validos, brancos, nulos e anulados (van); sem isto o total nunca fecha com a soma dos candidatos.
+			'valid_votes' => $this->integer( $votes['vv'] ?? 0 ), 'blank_votes' => $this->integer( $votes['vb'] ?? 0 ), 'blank_percentage' => $this->decimal( $votes['pvb'] ?? 0 ), 'null_votes' => $this->integer( $votes['vn'] ?? 0 ), 'null_percentage' => $this->decimal( $votes['pvn'] ?? 0 ), 'annulled_votes' => $this->integer( $votes['van'] ?? 0 ), 'annulled_percentage' => $this->decimal( $votes['pvan'] ?? 0 ),
+			'progress' => array( 'n' => 'not_started', 'p' => 'partial', 'f' => 'final' )[ $progress ] ?? 'unknown', 'final' => 'f' === $progress || 's' === strtolower( (string) ( $raw['tf'] ?? '' ) ), 'mathematically_defined' => sanitize_key( $raw['md'] ?? 'n' ), 'source_format' => $kind, 'tse_generation_id' => sanitize_text_field( (string) ( $raw['idg'] ?? '' ) ) ), 'candidates' => $candidates );
 	}
 
 	/** @return array<string,mixed>|null Null means HTTP 304/not modified. */

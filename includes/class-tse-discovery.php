@@ -79,7 +79,8 @@ final class AE_TSE_Discovery {
 				foreach ( self::contest_scopes( $scope_code, $position_code ) as $contest_scope ) {
 					$source_url = self::result_url( $environment, $cycle, $tse_code, $contest_scope, $position_code, $files );
 					$contest_config = array( 'collection' => array( 'source_url' => $source_url, 'kind' => 'EA20', 'interval' => 60, 'enabled' => true, 'managed' => true ) );
-					$seats = '0005' === $position_code ? 2 : 1;
+					// EA11 nao informa vagas; Senado renova por tercos alternados e 2026 elege 1 vaga por UF (2022 elegeu 2).
+					$seats = 1;
 					$external = $tse_code . '-r' . $round . '-' . $position_code . '-' . strtoupper( $contest_scope );
 					$scope_type = 'br' === $contest_scope ? 'BR' : 'UF';
 					$scope_name = 'br' === $contest_scope ? 'Brasil' : ( self::UFS[ $contest_scope ] ?? strtoupper( $contest_scope ) );

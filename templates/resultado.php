@@ -100,8 +100,9 @@ $max_votos = max( $max_votos, 1 );
             <?php foreach ( $candidatos as $i => $cand ) :
                 $pct_barra = $max_votos > 0 ? round( ( $cand['votos'] / $max_votos ) * 100, 1 ) : 0;
             ?>
-            <li class="tse-candidato <?php echo $cand['eleito'] ? 'tse-eleito' : ''; ?>"
-                data-numero="<?php echo esc_attr( $cand['numero'] ); ?>">
+            <li class="tse-candidato <?php echo $cand['eleito'] ? 'tse-eleito' : ''; ?> <?php echo ! empty( $cand['segundo_turno'] ) ? 'tse-segundo-turno' : ''; ?>"
+                data-numero="<?php echo esc_attr( $cand['numero'] ); ?>"
+                data-situacao="<?php echo esc_attr( $cand['situacao'] ); ?>">
 
                 <div class="tse-cand-posicao"><?php echo esc_html( $i + 1 ); ?>º</div>
 
@@ -113,7 +114,7 @@ $max_votos = max( $max_votos, 1 );
                         <?php if ( $cand['eleito'] ) : ?>
                         <span class="tse-badge-eleito">Eleito</span>
 						<?php elseif ( ! empty( $cand['situacao'] ) && 'Totalizado' === $status ) : ?>
-						<span class="tse-badge-status"><?php echo esc_html( $cand['situacao'] ); ?></span>
+						<span class="tse-badge-status <?php echo ! empty( $cand['segundo_turno'] ) ? 'tse-badge-turno2' : ''; ?>"><?php echo esc_html( $cand['situacao'] ); ?></span>
                         <?php endif; ?>
                     </div>
                     <div class="tse-cand-barra-wrap" role="presentation">

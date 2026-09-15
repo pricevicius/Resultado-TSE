@@ -17,6 +17,11 @@ final class AE_REST {
 	public function results( WP_REST_Request $request ): WP_REST_Response {
 		$data = AE_Results::instance()->latest( sanitize_title( $request['election'] ), absint( $request['round'] ), sanitize_key( $request['position'] ), sanitize_key( $request['scope'] ) );
 		if ( null === $data ) { return new WP_REST_Response( array( 'code' => 'ae_contest_not_found', 'message' => 'Disputa nao encontrada.' ), 404 ); }
+		// Sinalizador explicito para consumidores externos nao precisarem interpretar o texto livre de 'situation'.
+		$data['candidates'] = array_map( static function ( array $candidate ): array {
+			$candidate['segundo_turno'] = false !== mb_stripos( (string) ( $candidate['situation'] ?? '' ), 'turno' );
+			return $candidate;
+		}, $data['candidates'] );
 		return $this->cached_response( $request, $data, $data['snapshot']['captured_at'] ?? null );
 	}
 

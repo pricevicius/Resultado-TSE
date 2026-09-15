@@ -86,7 +86,7 @@ final class AE_Plugin {
 				'positions' => array(
 					array( 'code' => '0001', 'name' => 'Presidente', 'scope_type' => 'BR', 'seats' => 1 ),
 					array( 'code' => '0003', 'name' => 'Governador', 'scope_type' => 'UF', 'seats' => 1 ),
-					array( 'code' => '0005', 'name' => 'Senador', 'scope_type' => 'UF', 'seats' => 2 ),
+					array( 'code' => '0005', 'name' => 'Senador', 'scope_type' => 'UF', 'seats' => 1 ),
 				),
 			) ), 'created_at' => $now, 'updated_at' => $now,
 		), array( '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s' ) );
