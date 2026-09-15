@@ -33,6 +33,14 @@ $simulation_result_url = $url_method->invoke( null, 'simulado', 'ele2026', 21272
 if ( 'https://resultados-sim.tse.jus.br/simulado/simulado2026/ele2026/21272/dados/ac/ac-c0003-e021272-u.json' !== $simulation_result_url ) {
 	throw new RuntimeException( 'Simulation EA20 URL template contract failed.' );
 }
+$scopes_method = new ReflectionMethod( AE_TSE_Discovery::class, 'contest_scopes' );
+$scopes_method->setAccessible( true );
+$state_scopes = $scopes_method->invoke( null, 'br', '0007' );
+if ( in_array( 'df', $state_scopes, true ) || ! in_array( 'es', $state_scopes, true ) ) {
+	throw new RuntimeException( 'State deputy scope contract failed.' );
+}
+$district_scopes = $scopes_method->invoke( null, 'br', '0008' );
+if ( array( 'df' ) !== $district_scopes ) { throw new RuntimeException( 'District deputy scope contract failed.' ); }
 $widget = do_shortcode( '[apuracao cargo="0003" abrangencia="ES" turno="1"]' );
 if ( ! str_contains( $widget, 'tse-apuracao-widget' ) || ! wp_script_is( 'tse-live', 'enqueued' ) ) {
 	throw new RuntimeException( 'Client-side block/shortcode adapter failed.' );

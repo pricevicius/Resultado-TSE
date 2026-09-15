@@ -1,6 +1,9 @@
 <?php
 defined( 'ABSPATH' ) || exit;
 
+/** A missing source is local to one contest and must not pause all collections. */
+final class AE_TSE_Source_Not_Found extends RuntimeException {}
+
 /** Transport and normalization boundary. No visitor request invokes this class. */
 final class AE_TSE_Client {
 	private static ?AE_TSE_Client $instance = null;
@@ -38,7 +41,12 @@ final class AE_TSE_Client {
 	public function collect_results( array $payload ): array {
 		$contest_id = absint( $payload['contest_id'] ?? 0 ); $url = esc_url_raw( $payload['source_url'] ?? '' ); $kind = strtoupper( sanitize_key( $payload['kind'] ?? 'EA20' ) );
 		if ( ! $contest_id || ! in_array( $kind, array( 'EA14', 'EA15', 'EA20' ), true ) || ! $this->allowed_url( $url ) ) { throw new RuntimeException( 'Coleta TSE invalida.' ); }
-		$raw = $this->fetch_json( $url, true );
+		try {
+			$raw = $this->fetch_json( $url, true );
+		} catch ( AE_TSE_Source_Not_Found $e ) {
+			$this->disable_missing_result_source( $contest_id, $url );
+			return array( 'complete' => true, 'source_disabled' => true );
+		}
 		if ( null === $raw ) { return array( 'complete' => true, 'unchanged' => true ); }
 		$normalized = $this->normalize_result( $raw, $kind );
 		if ( ! $this->is_valid_result( $raw, $normalized, $kind ) ) { throw new RuntimeException( 'Snapshot rejeitado: estrutura essencial do TSE ausente.' ); }
@@ -90,13 +98,28 @@ final class AE_TSE_Client {
 		if ( is_wp_error( $response ) ) { throw new RuntimeException( $response->get_error_message() ); }
 		$code = wp_remote_retrieve_response_code( $response );
 		if ( 304 === $code ) { return null; }
-		if ( in_array( $code, array( 403, 404, 429 ), true ) ) { update_option( 'ae_tse_blocked_until', time() + 10 * MINUTE_IN_SECONDS, false ); }
+		if ( 404 === $code ) { throw new AE_TSE_Source_Not_Found( 'O TSE não publicou este arquivo de resultado.' ); }
+		if ( in_array( $code, array( 403, 429 ), true ) ) { update_option( 'ae_tse_blocked_until', time() + 10 * MINUTE_IN_SECONDS, false ); }
 		if ( 200 !== $code ) { throw new RuntimeException( 'TSE respondeu HTTP ' . $code . '; novas tentativas foram desaceleradas.' ); }
 		update_option( $key, array( 'etag' => wp_remote_retrieve_header( $response, 'etag' ), 'last_modified' => wp_remote_retrieve_header( $response, 'last-modified' ) ), false );
 		try { $data = json_decode( wp_remote_retrieve_body( $response ), true, 512, JSON_THROW_ON_ERROR ); return is_array( $data ) ? $data : throw new RuntimeException( 'JSON TSE sem objeto raiz.' ); } catch ( JsonException $e ) { throw new RuntimeException( 'JSON TSE inválido.' ); }
 	}
 
 	private function get_json( string $url ): array { return $this->fetch_json( $url, false ) ?? array(); }
+
+	/** Prevent one bad generated URL from re-entering the queue every minute. */
+	private function disable_missing_result_source( int $contest_id, string $url ): void {
+		global $wpdb;
+		$p = $wpdb->prefix . 'ae_';
+		$config_json = $wpdb->get_var( $wpdb->prepare( "SELECT config_json FROM {$p}contests WHERE id=%d", $contest_id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$config = json_decode( (string) $config_json, true );
+		if ( ! is_array( $config ) ) { $config = array(); }
+		$config['collection'] = is_array( $config['collection'] ?? null ) ? $config['collection'] : array();
+		$config['collection']['enabled'] = false;
+		$config['collection']['disabled_reason'] = 'O TSE não publicou este arquivo (HTTP 404).';
+		$wpdb->update( $p . 'contests', array( 'config_json' => wp_json_encode( $config ) ), array( 'id' => $contest_id ) );
+		AE_Logger::write( 'warning', 'result_source_disabled', array( 'contest_id' => $contest_id, 'source_url' => $url, 'reason' => 'HTTP 404' ) );
+	}
 
 	private function candidate_rows( array $raw ): array {
 		if ( isset( $raw['cand'] ) && is_array( $raw['cand'] ) ) { return $raw['cand']; }

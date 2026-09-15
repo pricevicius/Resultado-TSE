@@ -69,6 +69,7 @@ final class AE_TSE_Discovery {
 		$data = array( 'name' => $name, 'year' => $year, 'timezone' => 'America/Sao_Paulo', 'status' => 'active', 'config_json' => wp_json_encode( $config ), 'updated_at' => $now );
 		if ( $id ) { $wpdb->update( $p . 'elections', $data, array( 'id' => $id ) ); }
 		else { $data['slug'] = $slug; $data['created_at'] = $now; $wpdb->insert( $p . 'elections', $data ); $id = (int) $wpdb->insert_id; }
+		self::disable_invalid_managed_contests( $id );
 
 		foreach ( (array) ( $election['abr'] ?? array() ) as $scope ) {
 			$scope_code = strtolower( sanitize_key( $scope['cd'] ?? '' ) );
@@ -92,9 +93,25 @@ final class AE_TSE_Discovery {
 	/** EA11 lists state-wide positions under BR; their EA20 snapshots are stored per UF. */
 	private static function contest_scopes( string $scope, string $position ): array {
 		if ( 'br' !== $scope ) { return array( $scope ); }
-		if ( in_array( $position, array( '0003', '0005', '0006', '0007' ), true ) ) { return array_keys( self::UFS ); }
+		if ( in_array( $position, array( '0003', '0005', '0006' ), true ) ) { return array_keys( self::UFS ); }
+		// Distrito Federal elege deputados distritais (0008), não estaduais (0007).
+		if ( '0007' === $position ) { return array_diff( array_keys( self::UFS ), array( 'df' ) ); }
 		if ( '0008' === $position ) { return array( 'df' ); }
 		return array( $scope );
+	}
+
+	/** Disable stale generated sources that the current EA11 mapping says cannot exist. */
+	private static function disable_invalid_managed_contests( int $election_id ): void {
+		global $wpdb;
+		$p = $wpdb->prefix . 'ae_';
+		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT id,config_json FROM {$p}contests WHERE election_id=%d AND position_code='0007' AND scope_code='DF'", $election_id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		foreach ( $rows as $row ) {
+			$config = json_decode( (string) $row->config_json, true );
+			if ( ! is_array( $config ) || empty( $config['collection']['managed'] ) ) { continue; }
+			$config['collection']['enabled'] = false;
+			$config['collection']['disabled_reason'] = 'O Distrito Federal possui deputados distritais, não deputados estaduais.';
+			$wpdb->update( $p . 'contests', array( 'config_json' => wp_json_encode( $config ) ), array( 'id' => (int) $row->id ) );
+		}
 	}
 
 	/** Only synchronize roles the public widget can render. */
