@@ -4,7 +4,7 @@
 
 Este é o runbook técnico e funcional do plugin. Ele registra o que foi implementado, o que foi decidido e o que ainda está planejado. Toda mudança que altere fonte, contrato JSON, frequência, cache, fila, interface administrativa ou publicação deve atualizar este arquivo.
 
-Última revisão: 15/09/2026 (janela do 1º simulado do TSE, 15–17/09).
+Última revisão: 15/09/2026, fim de tarde (janela do 1º simulado do TSE, 15–17/09).
 
 ## Objetivo
 
@@ -123,15 +123,50 @@ O normalizador percorre `carg[] → agr[] → par[] → cand[]`.
 
 Não se infere “eleito” pela posição, percentual ou texto aproximado. Para 2026, a fonte é `cand.e`; `cand.st` é preservado para “Eleito”, “Não eleito”, “2º turno” e demais situações.
 
+**Correção 15/09/2026:** o TSE usa `cand.e = "s"` também para quem só avança ao 2º
+turno (não apenas para quem está de fato eleito) — descoberto ao vivo no simulado,
+quando Governador-ES mostrou 2 candidatos como "Eleito" simultaneamente. O
+normalizador agora nunca marca `elected = 1` quando `cand.st` contém "turno"
+(`class-tse-client.php`, variável `$runoff`), independente do valor de `cand.e`.
+Primeira tentativa usou `preg_match` com classe de caracteres `[ºo°]`, que falhou
+silenciosamente por tratar o "º" (multibyte UTF-8) byte a byte; a versão final usa
+`mb_stripos($status, 'turno')`, seguro para acentuação.
+
+**Ranking do Senado:** o `rank_no` gravado (de `cand.seq`/`posicao`) é a ordem
+oficial do TSE, não necessariamente a ordem por número de votos — em teste, um
+candidato com menos votos apareceu como "1º/Eleito" à frente de outro com mais
+votos. Isso é uma decisão do TSE (pode refletir critério além do voto bruto), não
+um bug de normalização; o campo `elected` continua vindo só de `cand.e` (com a
+ressalva do 2º turno acima). O que **era** bug era o front-end: o polling ao vivo
+reaproveitava o mesmo `<li>` do DOM e só atualizava o texto do número de posição,
+sem reordenar o elemento — corrigido em `tse-live.js` (`list.appendChild(li)` a
+cada atualização, o que reordena reaproveitando o nó existente).
+
+**Totais de votos:** o normalizador ignorava por completo `v.van` (votos
+anulados), `v.vb` (brancos) e `v.vn` (nulos) — só guardava o total geral. Em teste
+real (Governador-SP), `van` chegou a 8,4% dos votos, uma categoria não trivial.
+Adicionados a `totals`: `annulled_votes`/`annulled_percentage`,
+`blank_votes`/`blank_percentage`, `null_votes`/`null_percentage`. Não exige
+migração de schema (`totals_json` é JSON livre). Expostos no payload do shortcode
+como `votos_anulados`, `votos_brancos`, `votos_nulos`, `pct_votos_anulados`, e no
+endpoint `apuracao/v1/results` como `segundo_turno` (booleano) por candidato.
+
+**Vagas do Senado:** `seats` era fixado em `2` para o cargo `0005` em todo o
+código (`class-tse-discovery.php`, `class-plugin.php`, `class-admin.php`). O
+Senado renova por terços alternados — 2/3 em 2022, **1/3 em 2026** — então o valor
+correto para este ciclo é `1`. Corrigido nos três lugares. `seats` é só metadado
+informativo (exposto em `contest_meta()`), nunca influenciou a lógica de eleito.
+
 ### Cenário zerado
 
 EA20 válido com `v.tv = 0`, `s.st = 0`, `s.pst = 0` e `and = "n"` é aceito. A interface exibe **Aguardando apuração**, candidatos zerados e 0,00%.
 
 ### Cenário 100%
 
-Com `and = "f"`/`tf = "s"`, a interface exibe **Totalizado**. Cada candidato recebe a situação oficial: **Eleito** quando `e = "s"`; os demais exibem `st`, como **Não eleito**. Senado suporta duas vagas sem inferência por ranking.
+Com `and = "f"`/`tf = "s"`, a interface exibe **Totalizado**. Cada candidato recebe a situação oficial: **Eleito** quando `e = "s"` e a situação não é de 2º turno; os demais exibem `st`, como **Não eleito** ou **2º turno**.
 
-Fixtures: `ea20-zero.json`, `ea20-final.json` e `ea20-minimal.json`.
+Fixtures: `ea20-zero.json`, `ea20-final.json` e `ea20-minimal.json` (precisam de um
+caso "2º turno com `cand.e = s`" adicionado como regressão do bug acima).
 
 ## Limite de acesso e bloqueios
 
@@ -162,6 +197,54 @@ APIs:
 - `GET /wp-json/apuracao/v1/results/{eleicao}/{turno}/{cargo}/{abrangencia}`
 - `GET /wp-json/apuracao/v1/candidates/{eleicao}/{id-externo}`
 - compatibilidade: `GET /wp-json/tse/v1/resultado?cargo=governador&uf=es&turno=1`
+
+### `[tse_apuracao_card]` — card compacto (novo, 15/09/2026)
+
+Criado para uso na home/grades, onde o widget completo (`[tse_apuracao]`) é grande
+demais. Reaproveita toda a lógica de dados de `TSE_Shortcode::snapshot_resultado()`;
+só muda a apresentação (`templates/card.php`).
+
+```text
+[tse_apuracao_card cargo="presidente" titulo="Presidente"]
+[tse_apuracao_card cargo="presidente" limite="4" titulo="Presidente" classe="wrapper"]
+```
+
+Atributos: `cargo`, `uf`, `turno`, `atualizar`, `titulo` (aceita `title` como
+sinônimo), `classe` (classe CSS extra) e `limite`:
+
+- `limite=1` (padrão): um card único com o líder da disputa — foto, número, nome,
+  partido, % grande, barra, badge (Eleito/2º turno/Não eleito).
+- `limite>1`: repete o **mesmo** card, um por colocado, dentro de
+  `<div class="tse-card-grid">`. Título e "% apurado" saem do card individual e
+  viram um cabeçalho único da seção (`<header class="apuracao__header"><h2>`,
+  no mesmo padrão de outros cabeçalhos de seção do site), porque repetir isso em
+  cada mini-card ficava redundante e visualmente poluído — foi a primeira versão
+  entregue e revertida no mesmo dia a partir de feedback direto.
+- `classe` é aplicada no elemento **de fora** (o único card, se `limite=1`, ou o
+  `.tse-card-secao`/`.tse-card-grid`, se `limite>1`) — nunca repetida em cada
+  mini-card — para o front conseguir plugar num grid que já existe no tema.
+
+Rótulo "ao vivo" tem 3 estados agora (`liveLabel()` em `tse-live.js`, compartilhado
+com `[tse_apuracao]`): **Ao vivo** (em andamento) → **Apuração concluída**
+(`progress = final`, TSE não vai mandar mais nada, não é atraso) → **Dados
+atrasados** (sem novo snapshot há mais de 3 min e ainda não é final). Antes, uma
+disputa finalizada há 25 min aparecia como "Dados atrasados" para sempre, o que é
+enganoso — só corrigido depois de diagnosticar ao vivo por que o Presidente
+(100%, `final`) parecia "atrasado" no simulado.
+
+### Bug: CSS/JS não carregava fora de página singular
+
+`enqueue_assets()` (hook `wp_enqueue_scripts`) só chamava `enqueue_widget_assets()`
+quando `is_singular()` e o shortcode aparecia em `$post->post_content`. Isso
+funciona em posts/páginas normais, mas a **home** do site (listagem, não
+singular) nunca batia nessa condição — o único outro enqueue era o chamado de
+dentro do próprio `render()`/`render_card()`, que roda tarde demais (depois que o
+`wp_head()` já imprimiu as tags `<link>`), então o `<link>` do CSS nunca saía.
+Resultado: shortcode na home renderiza sem nenhum estilo (visto ao vivo:
+`http://localhost/` empilhado, sem grid, sem cor). Corrigido carregando os assets
+sempre, incondicionalmente — os arquivos são pequenos (CSS ~10KB) e o shortcode
+pode aparecer em qualquer lugar (home, widget, page builder, block theme) sem
+estar em `$post->post_content`.
 
 ## Planejado — ainda não implementado
 
@@ -267,13 +350,94 @@ Resultado logo após a ativação: fila caiu de 105 para a faixa de dezenas em m
   o teste de hoje não indicou essa necessidade (82 jobs em 40 s com fonte
   respondendo normalmente), mas vale monitorar no simulado de 22–24/09.
 
+## Avaliação de performance e prontidão (15/09/2026)
+
+Relatório completo (fluxograma + métricas): <https://claude.ai/artifact/XDMtdhFMDrvQYeXB8gMwY7>.
+
+### O teto real de disputas é conhecido, não estimado
+
+2026 é ano de **eleição geral** — Presidente, Governador, Senador, Deputado
+Federal e Deputado Estadual/Distrital. Não tem prefeito/vereador (só em 2028).
+Contando 1 disputa por cargo × UF:
+
+```
+1 Presidente + 27 Governador + 27 Senador + 27 Dep. Federal + 27 Dep. Estadual/Distrital = 109
+```
+
+**109 é exatamente o número de disputas ativas no simulado testado hoje** — não é
+uma amostra pequena de um universo maior, é o teto real do 1º turno. Pior caso de
+2º turno (Presidente + hipoteticamente os 27 governadores, o que nunca ocorre na
+prática): 137. A vazão medida isoladamente (82 jobs processados em 40 s, um
+worker sequencial) cobre esse teto com folga — ver o incidente de sincronização
+acima para o cenário em que isso *não* foi suficiente (não por falta de vazão, mas
+por o disparo do WP-Cron ser irregular).
+
+**Conclusão:** a arquitetura de coleta (contagem de disputas × 1 worker) está
+adequada para o escopo real de 2026. EA14/EA15 continuam sendo pré-requisito
+apenas se a cobertura crescer para além de cargo × UF (ex.: municípios em anos de
+eleição municipal) — não são bloqueio para este ciclo.
+
+### O que ainda não depende do TSE (pode ser feito antes do 2º simulado)
+
+- sincronizar os arquivos alterados hoje com homolog e produção — confirmado ao
+  vivo que o homolog ainda mostra "Eleito" onde deveria ser "2º turno" porque
+  está rodando o código de antes desses fixes;
+- recriar `bin/tse-tick.php` como cron de sistema real (não WP-Cron) nos
+  ambientes de homolog/produção, do jeito que já foi feito no Docker local;
+- ligar cache persistente (ver plano de cache abaixo);
+- rodar o teste de carga já definido (200 usuários virtuais, p95 < 400 ms, erro
+  < 1%) — pode ser feito contra snapshots já existentes no banco, sem depender
+  do TSE ao vivo.
+
+### O que só o 2º simulado (22–24/09) pode validar
+
+O TSE publica dado de teste deliberadamente com casos extremos — foi assim que
+apareceram hoje o "2º turno marcado como eleito", o ranking do Senado fora de
+ordem de votos e o candidato com nome `Candidato string 1234!@#$"TSE"`. Não dá
+pra garantir que todos os formatos possíveis já foram vistos sem mais uma rodada
+de dado real. Isso não é falha de arquitetura — é a natureza de integrar com uma
+fonte de terceiro cujo contrato não é 100% especificado publicamente.
+
+## Plano de cache — decisão adiada para depois do 2º simulado
+
+Produção terá **Cloudflare** na frente do site. Isso resolve bem o eixo de escala
+que ficou em aberto (tráfego de leitor, não quantidade de disputas — ver acima),
+porque a arquitetura já é "cliente busca": `tse-live.js` já faz `fetch()` no REST
+do WordPress por polling, não é o servidor reprocessando a cada requisição.
+
+Ponto técnico a resolver quando isso for retomado: hoje só o endpoint
+`apuracao/v1/results` manda `Cache-Control` explícito
+(`class-rest.php::cached_response()` — `public, max-age=30, s-maxage=60,
+stale-while-revalidate=300`). O endpoint que o widget/card realmente usa no dia a
+dia, `tse/v1/resultado` (`class-tse-shortcode.php::rest_resultado()`), **não**
+define isso — sem cabeçalho explícito, a REST API do WordPress manda o
+`no-cache` padrão dela, e o Cloudflare não tem motivo para guardar aquela
+resposta na borda. Sem esse ajuste, o cache de borda simplesmente não pega nesse
+endpoint específico, mesmo com o Cloudflare ligado.
+
+Cloudflare (cache de borda HTTP) e Redis/Memcached (cache de objeto no PHP, usado
+por `AE_Results::latest()` via `wp_cache_get/set`) resolvem problemas diferentes
+e complementares — o primeiro não substitui o segundo.
+
+Decisão do time: reavaliar escala e cache **depois** do simulado de 22–24/09, com
+Cloudflare já configurado e mais um ponto de dado real do TSE para confirmar (ou
+não) a folga estimada aqui.
+
 ## Pendências para produção
 
 - executar e documentar os simulados; não declarar homologação antes deles;
-- implementar EA14/EA15 antes de mapas nacionais;
+- implementar EA14/EA15 apenas se a cobertura crescer além de cargo × UF (não é
+  bloqueio para o escopo de 2026 — ver avaliação de performance acima);
 - ~~configurar cron real a cada minuto~~ mitigado em 15/09 com `bin/tse-tick-loop.sh`
-  via crontab do host; falta migrar para o cron definitivo do ambiente de produção;
+  via crontab do host; falta migrar para o cron definitivo do ambiente de produção
+  **e** para o homolog (confirmado desatualizado);
+- sincronizar código corrigido hoje (2º turno, votos anulados, seats do Senado,
+  card, CSS) com homolog e produção;
+- adicionar `Cache-Control` em `tse/v1/resultado` para o Cloudflare conseguir
+  cachear esse endpoint (ver plano de cache);
 - Redis/Memcached, InnoDB e CDN que preserve cabeçalhos;
+- rodar o teste de carga já definido (200 VUs, p95 < 400 ms, erro < 1%) — não
+  depende do TSE, pode ser feito agora;
 - validar observabilidade, rollback, retenção e treinamento editorial;
 - migrar/remover classes legadas após validar todos os shortcodes existentes.
 
@@ -287,4 +451,13 @@ Resultado logo após a ativação: fila caiu de 105 para a faixa de dezenas em m
 - proteção de taxa, HTTP condicional e circuit breaker;
 - frontend ajustado para turno/status/etiquetas;
 - documentação consolidada;
-- próximo: lint, testes WordPress, smoke do admin, revisão, commit e push.
+- **15/09/2026, tarde:** diagnosticado e corrigido ao vivo durante o 1º simulado:
+  atraso de sincronização (cron real de emergência), "2º turno" marcado como
+  eleito, votos anulados/brancos/nulos ausentes do totals, `seats` do Senado
+  incorreto para 2026, DOM não reordenava no polling do Senado, CSS não
+  carregava fora de página singular; criado `[tse_apuracao_card]`; avaliação de
+  performance publicada (109 disputas = teto real de 2026, não estimativa);
+  decisão de retomar cache (Cloudflare) depois do 2º simulado;
+- próximo: sincronizar fixes com homolog/produção, cron real fora do Docker
+  local, `Cache-Control` em `tse/v1/resultado`, teste de carga, 2º simulado
+  (22–24/09), só então declarar homologado.
