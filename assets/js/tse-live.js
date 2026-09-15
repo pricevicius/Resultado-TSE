@@ -13,6 +13,12 @@
         return Number( n ).toLocaleString( 'pt-BR' );
     }
 
+	function liveLabel( data ) {
+		if ( data.atrasado ) return 'Dados atrasados';
+		if ( 'Totalizado' === data.status ) return 'Apuração concluída';
+		return 'Ao vivo';
+	}
+
     function updateWidget( widget ) {
         const cargo   = widget.dataset.cargo;
         const uf      = widget.dataset.uf;
@@ -55,7 +61,7 @@
 		const atualizadoEl = widget.querySelector( '.tse-card-atualizado' );
 		if ( atualizadoEl ) {
 			atualizadoEl.classList.toggle( 'tse-dados-atrasados', Boolean( data.atrasado ) );
-			atualizadoEl.textContent = data.atrasado ? 'Dados atrasados' : 'Ao vivo';
+			atualizadoEl.textContent = liveLabel( data );
 		}
 
 		if ( ! lider ) return;
@@ -122,7 +128,7 @@
 		const liveEl = widget.querySelector( '.tse-ao-vivo' );
 		const liveLabelEl = widget.querySelector( '.tse-live-label' );
 		if ( liveEl ) liveEl.classList.toggle( 'tse-dados-atrasados', Boolean( data.atrasado ) );
-		if ( liveLabelEl ) liveLabelEl.textContent = data.atrasado ? 'Dados atrasados' : 'Ao vivo';
+		if ( liveLabelEl ) liveLabelEl.textContent = liveLabel( data );
 
         // Atualiza status
         const statusEl = widget.querySelector( '.tse-status' );
