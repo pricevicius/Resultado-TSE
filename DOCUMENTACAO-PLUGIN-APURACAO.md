@@ -4,7 +4,7 @@
 
 Este é o runbook técnico e funcional do plugin. Ele registra o que foi implementado, o que foi decidido e o que ainda está planejado. Toda mudança que altere fonte, contrato JSON, frequência, cache, fila, interface administrativa ou publicação deve atualizar este arquivo.
 
-Última revisão: 14/09/2026.
+Última revisão: 15/09/2026 (janela do 1º simulado do TSE, 15–17/09).
 
 ## Objetivo
 
@@ -207,11 +207,72 @@ Janelas: 15–17/09/2026 e 22–24/09/2026, 9h–12h e 14h–17h (Brasília). Es
 
 Alvo inicial: p95 abaixo de 400 ms e erros abaixo de 1% com 200 usuários virtuais, ajustável à infraestrutura.
 
+## Incidente 15/09/2026 — atraso de sincronização durante o 1º simulado
+
+Durante a primeira janela do simulado oficial do TSE (15/09, manhã), o site publicava
+resultados visivelmente atrasados em relação ao portal `resultados-sim.tse.jus.br`
+(ex.: TSE já em ~99,99% de apuração enquanto o nosso `[tse_apuracao]` mostrava
+percentuais bem menores).
+
+### Diagnóstico
+
+Consulta direta ao banco (`wp_ae_jobs`, `wp_ae_snapshots`, `wp_ae_logs`) mostrou:
+
+- fila `collect_results` com **105 jobs acumulados**, apenas 1 em execução por vez;
+- disputas com snapshot válido **até 19 minutos desatualizado** (`contest_id=457`
+  chegou a 1142 s de idade), contra o intervalo configurado de 60 s;
+- nenhum bloqueio ativo do TSE (`ae_tse_blocked_until` já expirado) e nenhum erro de
+  parsing — os snapshots que chegavam eram válidos (SHA-256 ok, `snapshot_valid` no
+  log). Ou seja, **não era problema de fonte/contrato, era de vazão do worker**;
+- o `wp-cron.php` (verificado no `access.log` do nginx) disparava de forma irregular,
+  a cada ~60–90 s, dependendo de tráfego no site — exatamente o risco já registrado
+  em "Pendências para produção" ("WP-Cron por tráfego é fallback");
+- `AE_Job_Runner::tick()` processa jobs **sequencialmente** (um lock global via
+  `wp_cache_add`) com orçamento de 40 s por disparo. Um tick manual isolado processou
+  ~82 jobs nesses 40 s — ou seja, a vazão em si é suficiente; o problema é a lacuna
+  entre disparos do WP-Cron, que faz o backlog crescer sempre que o tráfego do site
+  cai ou quando o TSE demora mais para responder (carga real da imprensa no
+  simulado).
+
+### Correção aplicada (mesmo dia, com o simulado em andamento)
+
+Sem alterar o código de coleta/normalização, foi adicionado um disparo direto e
+independente de tráfego:
+
+- [`bin/tse-tick.php`](bin/tse-tick.php): carrega o WordPress
+  (`wp-load.php`) e chama `AE_Job_Runner::instance()->tick()` diretamente, sem passar
+  pelo agendamento do WP-Cron;
+- [`bin/tse-tick-loop.sh`](bin/tse-tick-loop.sh): dispara esse script a cada 15 s
+  (4x por minuto) via `docker exec` no container da aplicação, com saída em
+  `~/jobs/tribunaonline/tse-tick.log`;
+- crontab real do host (usuário `price`) chamando o loop a cada minuto:
+  `* * * * * .../tse-apuracao/bin/tse-tick-loop.sh`.
+
+O lock interno do `AE_Job_Runner` (`wp_cache_add` com TTL de 55 s) garante que essas
+chamadas extras nunca rodem em paralelo com o WP-Cron nem entre si — na pior das
+hipóteses, uma chamada recém-disparada encontra o lock ocupado e retorna
+imediatamente sem custo. O WP-Cron continua ativo como redundância.
+
+Resultado logo após a ativação: fila caiu de 105 para a faixa de dezenas em menos de
+2 minutos e a idade máxima dos snapshots voltou para dentro do intervalo configurado
+(< 90 s). Ver `~/jobs/tribunaonline/tse-tick.log` para o histórico de execuções.
+
+### Ação de acompanhamento
+
+- migrar esse cron "de emergência" para um mecanismo suportado em produção (ex.:
+  cron de sistema no servidor real, não um host de desenvolvimento) antes do
+  segundo simulado (22–24/09) e da eleição oficial;
+- considerar paralelizar `collect_results` (hoje 1 worker) se, mesmo com disparo a
+  cada 15 s, o TSE responder mais lento que o esperado sob carga real de eleição;
+  o teste de hoje não indicou essa necessidade (82 jobs em 40 s com fonte
+  respondendo normalmente), mas vale monitorar no simulado de 22–24/09.
+
 ## Pendências para produção
 
 - executar e documentar os simulados; não declarar homologação antes deles;
 - implementar EA14/EA15 antes de mapas nacionais;
-- configurar cron real a cada minuto; WP-Cron por tráfego é fallback;
+- ~~configurar cron real a cada minuto~~ mitigado em 15/09 com `bin/tse-tick-loop.sh`
+  via crontab do host; falta migrar para o cron definitivo do ambiente de produção;
 - Redis/Memcached, InnoDB e CDN que preserve cabeçalhos;
 - validar observabilidade, rollback, retenção e treinamento editorial;
 - migrar/remover classes legadas após validar todos os shortcodes existentes.
