@@ -12,16 +12,12 @@ class TSE_Shortcode {
     }
 
     public static function enqueue_assets(): void {
-        global $post;
-        // Só carrega nos posts/páginas que usam o shortcode
-        if ( ! is_singular() || ! is_a( $post, 'WP_Post' ) ) {
-            return;
-        }
-        if ( ! has_shortcode( $post->post_content, 'tse_apuracao' ) && ! has_shortcode( $post->post_content, 'tse_apuracao_card' ) ) {
-            return;
-        }
-		self::enqueue_widget_assets();
-	}
+        // O shortcode pode aparecer em qualquer lugar (home, widget, page builder, block
+        // theme) sem estar em $post->post_content, e enqueue tardio (dentro do próprio
+        // render do shortcode) já passou do wp_head() — o <link> do CSS nunca sai. Por
+        // isso carregamos sempre aqui; os arquivos são pequenos (CSS ~10KB, JS poucos KB).
+        self::enqueue_widget_assets();
+    }
 
 	public static function enqueue_widget_assets(): void {
 

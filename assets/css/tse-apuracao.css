@@ -475,13 +475,26 @@
 /* [tse_apuracao_card limite=">1"]: título e "% apurado" aparecem uma vez só,
  * para a disputa inteira — não repetidos em cada card. Mesmo padrão de
  * cabeçalho de seção usado no resto do site (<header class="apuracao__header">
- * com <h2> dentro); a tipografia do h2 vem do tema, aqui só o layout do badge. */
-.apuracao__header {
+ * com <h2> dentro). O h2 do tema costuma ser pensado pra seção de página
+ * inteira (grande, com margem própria) — aqui ele fica dentro de um card
+ * estreito, então resetamos o essencial pra não estourar o layout,
+ * mantendo cor/peso que o tema já define globalmente pra h2.
+ */
+.tse-card-secao .apuracao__header {
 	display:         flex;
 	justify-content: space-between;
 	align-items:     baseline;
 	gap:             8px;
-	margin-bottom:   10px;
+	margin:          0 0 10px;
+	padding:         0;
+	border:          0;
+	background:      none;
+}
+
+.tse-card-secao .apuracao__header h2 {
+	margin:      0;
+	font-size:   15px;
+	line-height: 1.3;
 }
 
 .tse-card-secao-pct {
