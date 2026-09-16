@@ -2,12 +2,12 @@
 defined( 'ABSPATH' ) || exit;
 
 /** A missing source is local to one contest and must not pause all collections. */
-final class AE_TSE_Source_Not_Found extends RuntimeException {}
+final class TSE_Source_Not_Found extends RuntimeException {}
 
 /** Transport and normalization boundary. No visitor request invokes this class. */
-final class AE_TSE_Client {
-	private static ?AE_TSE_Client $instance = null;
-	public static function instance(): AE_TSE_Client { return self::$instance ??= new self(); }
+final class TSE_Client {
+	private static ?TSE_Client $instance = null;
+	public static function instance(): TSE_Client { return self::$instance ??= new self(); }
 
 	public function import_candidates_page( array $payload, array $cursor, int $job_id ): array {
 		$url = esc_url_raw( $payload['source_url'] ?? '' ); $election_id = absint( $payload['election_id'] ?? 0 );
@@ -32,7 +32,7 @@ final class AE_TSE_Client {
 			if ( $existing ) { unset( $data['election_id'], $data['external_id'] ); $wpdb->update( $table, $data, array( 'id' => (int) $existing ) ); }
 			else { $wpdb->insert( $table, $data ); }
 		}
-		AE_Logger::write( 'info', 'candidate_import_page', array( 'job_id' => $job_id, 'offset' => $offset, 'count' => count( $batch ) ) );
+		TSE_Logger::write( 'info', 'candidate_import_page', array( 'job_id' => $job_id, 'offset' => $offset, 'count' => count( $batch ) ) );
 		$next_cursor = $batch_data['cursor'] ?? array( 'offset' => $offset + count( $batch ) );
 		if ( $complete ) { $this->cleanup_import_file( $job_id ); }
 		return array( 'complete' => $complete, 'cursor' => $next_cursor );
@@ -42,12 +42,12 @@ final class AE_TSE_Client {
 		$contest_id = absint( $payload['contest_id'] ?? 0 ); $url = esc_url_raw( $payload['source_url'] ?? '' ); $kind = strtoupper( sanitize_key( $payload['kind'] ?? 'EA20' ) );
 		if ( ! $contest_id || ! in_array( $kind, array( 'EA14', 'EA15', 'EA20' ), true ) || ! $this->allowed_url( $url ) ) { throw new RuntimeException( 'Coleta TSE invalida.' ); }
 		if ( ! $this->result_source_is_current( $contest_id, $url ) ) {
-			AE_Logger::write( 'info', 'stale_result_job_ignored', array( 'contest_id' => $contest_id, 'source_url' => $url ) );
+			TSE_Logger::write( 'info', 'stale_result_job_ignored', array( 'contest_id' => $contest_id, 'source_url' => $url ) );
 			return array( 'complete' => true, 'source_ignored' => true );
 		}
 		try {
 			$raw = $this->fetch_json( $url, true );
-		} catch ( AE_TSE_Source_Not_Found $e ) {
+		} catch ( TSE_Source_Not_Found $e ) {
 			$this->disable_missing_result_source( $contest_id, $url );
 			return array( 'complete' => true, 'source_disabled' => true );
 		}
@@ -65,8 +65,8 @@ final class AE_TSE_Client {
 			$candidate_id = $this->upsert_result_candidate( $contest_id, $candidate, $url );
 			$wpdb->insert( $p . 'result_rows', array( 'snapshot_id' => $snapshot_id, 'candidate_id' => $candidate_id ? (int) $candidate_id : null, 'external_candidate_id' => $candidate['external_id'], 'rank_no' => $candidate['rank'], 'votes' => $candidate['votes'], 'percentage' => $candidate['percentage'], 'elected' => $candidate['elected'], 'situation' => $candidate['situation'] ), array( '%d','%d','%s','%d','%d','%f','%d','%s' ) );
 		}
-		AE_Results::instance()->invalidate( $snapshot_id );
-		AE_Logger::write( 'info', 'snapshot_valid', array( 'contest_id' => $contest_id, 'snapshot_id' => $snapshot_id, 'sha256' => $sha ) );
+		TSE_Results::instance()->invalidate( $snapshot_id );
+		TSE_Logger::write( 'info', 'snapshot_valid', array( 'contest_id' => $contest_id, 'snapshot_id' => $snapshot_id, 'sha256' => $sha ) );
 		return array( 'complete' => true );
 	}
 
@@ -100,14 +100,14 @@ final class AE_TSE_Client {
 		$this->throttle();
 		$key = 'ae_tse_http_' . md5( $url );
 		$state = $conditional ? get_option( $key, array() ) : array();
-		$headers = array( 'Accept' => 'application/json', 'User-Agent' => 'WordPress Apuracao Eleitoral/' . AE_VERSION );
+		$headers = array( 'Accept' => 'application/json', 'User-Agent' => 'WordPress Apuracao Eleitoral/' . TSE_APURACAO_VERSION );
 		if ( ! empty( $state['etag'] ) ) { $headers['If-None-Match'] = $state['etag']; }
 		if ( ! empty( $state['last_modified'] ) ) { $headers['If-Modified-Since'] = $state['last_modified']; }
 		$response = wp_remote_get( $url, array( 'timeout' => 20, 'redirection' => 2, 'headers' => $headers ) );
 		if ( is_wp_error( $response ) ) { throw new RuntimeException( $response->get_error_message() ); }
 		$code = wp_remote_retrieve_response_code( $response );
 		if ( 304 === $code ) { return null; }
-		if ( 404 === $code ) { throw new AE_TSE_Source_Not_Found( 'O TSE não publicou este arquivo de resultado.' ); }
+		if ( 404 === $code ) { throw new TSE_Source_Not_Found( 'O TSE não publicou este arquivo de resultado.' ); }
 		if ( in_array( $code, array( 403, 429 ), true ) ) { update_option( 'ae_tse_blocked_until', time() + 10 * MINUTE_IN_SECONDS, false ); }
 		if ( 200 !== $code ) { throw new RuntimeException( 'TSE respondeu HTTP ' . $code . '; novas tentativas foram desaceleradas.' ); }
 		update_option( $key, array( 'etag' => wp_remote_retrieve_header( $response, 'etag' ), 'last_modified' => wp_remote_retrieve_header( $response, 'last-modified' ) ), false );
@@ -136,13 +136,13 @@ final class AE_TSE_Client {
 		if ( ! is_array( $config ) ) { $config = array(); }
 		$config['collection'] = is_array( $config['collection'] ?? null ) ? $config['collection'] : array();
 		if ( esc_url_raw( (string) ( $config['collection']['source_url'] ?? '' ) ) !== $url ) {
-			AE_Logger::write( 'info', 'stale_404_ignored', array( 'contest_id' => $contest_id, 'source_url' => $url ) );
+			TSE_Logger::write( 'info', 'stale_404_ignored', array( 'contest_id' => $contest_id, 'source_url' => $url ) );
 			return;
 		}
 		$config['collection']['enabled'] = false;
 		$config['collection']['disabled_reason'] = 'O TSE não publicou este arquivo (HTTP 404).';
 		$wpdb->update( $p . 'contests', array( 'config_json' => wp_json_encode( $config ) ), array( 'id' => $contest_id ) );
-		AE_Logger::write( 'warning', 'result_source_disabled', array( 'contest_id' => $contest_id, 'source_url' => $url, 'reason' => 'HTTP 404' ) );
+		TSE_Logger::write( 'warning', 'result_source_disabled', array( 'contest_id' => $contest_id, 'source_url' => $url, 'reason' => 'HTTP 404' ) );
 	}
 
 	private function candidate_rows( array $raw ): array {
@@ -212,7 +212,7 @@ final class AE_TSE_Client {
 		if ( ! $path || ! is_readable( $path ) ) {
 			$path = wp_tempnam( $url );
 			if ( ! $path ) { throw new RuntimeException( 'Não foi possível preparar o arquivo de candidatos.' ); }
-			$response = wp_remote_get( $url, array( 'timeout' => 300, 'redirection' => 2, 'stream' => true, 'filename' => $path, 'headers' => array( 'Accept' => 'application/zip,application/octet-stream', 'User-Agent' => 'WordPress Apuracao Eleitoral/' . AE_VERSION ) ) );
+			$response = wp_remote_get( $url, array( 'timeout' => 300, 'redirection' => 2, 'stream' => true, 'filename' => $path, 'headers' => array( 'Accept' => 'application/zip,application/octet-stream', 'User-Agent' => 'WordPress Apuracao Eleitoral/' . TSE_APURACAO_VERSION ) ) );
 			if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) {
 				wp_delete_file( $path );
 				throw new RuntimeException( is_wp_error( $response ) ? $response->get_error_message() : 'Dados Abertos do TSE respondeu HTTP ' . wp_remote_retrieve_response_code( $response ) . '.' );

@@ -6,4 +6,4 @@ wp_set_current_user( $admins[0]->ID );
 $_POST = array( 'action' => 'ae_quick_setup', 'year' => '2026', 'name' => 'Eleições Gerais 2026' );
 $_POST['_wpnonce'] = wp_create_nonce( 'ae_quick_setup' );
 $_REQUEST = $_POST;
-AE_Admin::instance()->quick_setup();
+TSE_Admin::instance()->quick_setup();

@@ -1,12 +1,12 @@
 <?php
 defined( 'ABSPATH' ) || exit;
 
-final class AE_Job_Runner {
-	private static ?AE_Job_Runner $instance = null;
+final class TSE_Job_Runner {
+	private static ?TSE_Job_Runner $instance = null;
 	private const LOCK_KEY = 'ae_job_runner_lock';
 	private const LOCK_TTL = 55;
 
-	public static function instance(): AE_Job_Runner { return self::$instance ??= new self(); }
+	public static function instance(): TSE_Job_Runner { return self::$instance ??= new self(); }
 
 	public static function enqueue( string $type, array $payload, array $cursor = array(), int $delay = 0 ): int {
 		global $wpdb;
@@ -70,9 +70,9 @@ final class AE_Job_Runner {
 			$payload = json_decode( $job->payload_json, true, 512, JSON_THROW_ON_ERROR );
 			$cursor = $job->cursor_json ? json_decode( $job->cursor_json, true, 512, JSON_THROW_ON_ERROR ) : array();
 			$done = match ( $job->type ) {
-				'import_candidates' => AE_TSE_Client::instance()->import_candidates_page( $payload, $cursor, $job->id ),
-				'collect_results' => AE_TSE_Client::instance()->collect_results( $payload ),
-				'sync_tse' => AE_TSE_Discovery::sync( $payload ),
+				'import_candidates' => TSE_Client::instance()->import_candidates_page( $payload, $cursor, $job->id ),
+				'collect_results' => TSE_Client::instance()->collect_results( $payload ),
+				'sync_tse' => TSE_Discovery::sync( $payload ),
 				default => throw new RuntimeException( 'Unsupported job type: ' . $job->type ),
 			};
 			$this->finish( $job, $done );
@@ -88,13 +88,13 @@ final class AE_Job_Runner {
 			return;
 		}
 		$wpdb->update( $t, array( 'state' => 'completed', 'locked_until' => null, 'lock_token' => null, 'updated_at' => $now ), array( 'id' => $job->id ), array( '%s','%s','%s','%s' ), array( '%d' ) );
-		AE_Logger::write( 'info', 'job_completed', array( 'job_id' => (int) $job->id, 'type' => $job->type ) );
+		TSE_Logger::write( 'info', 'job_completed', array( 'job_id' => (int) $job->id, 'type' => $job->type ) );
 	}
 
 	private function retry_or_fail( object $job, Throwable $e ): void {
 		global $wpdb; $t = $wpdb->prefix . 'ae_jobs'; $attempts = (int) $job->attempts;
 		$state = $attempts >= 5 ? 'failed' : 'retry'; $delay = min( 900, 30 * ( 2 ** max( 0, $attempts - 1 ) ) );
 		$wpdb->update( $t, array( 'state' => $state, 'run_after' => gmdate( 'Y-m-d H:i:s', time() + $delay ), 'locked_until' => null, 'lock_token' => null, 'last_error' => $e->getMessage(), 'updated_at' => current_time( 'mysql', true ) ), array( 'id' => $job->id ), array( '%s','%s','%s','%s','%s','%s' ), array( '%d' ) );
-		AE_Logger::write( 'error', 'job_' . $state, array( 'job_id' => (int) $job->id, 'error' => $e->getMessage() ) );
+		TSE_Logger::write( 'error', 'job_' . $state, array( 'job_id' => (int) $job->id, 'error' => $e->getMessage() ) );
 	}
 }

@@ -1,9 +1,9 @@
 <?php
 defined( 'ABSPATH' ) || exit;
 
-final class AE_REST {
-	private static ?AE_REST $instance = null;
-	public static function instance(): AE_REST { return self::$instance ??= new self(); }
+final class TSE_REST {
+	private static ?TSE_REST $instance = null;
+	public static function instance(): TSE_REST { return self::$instance ??= new self(); }
 
 	public function register_routes(): void {
 		register_rest_route( 'apuracao/v1', '/results/(?P<election>[a-z0-9-]+)/(?P<round>\d+)/(?P<position>[A-Za-z0-9_-]+)/(?P<scope>[A-Za-z0-9_-]+)', array( 'methods' => WP_REST_Server::READABLE, 'callback' => array( $this, 'results' ), 'permission_callback' => '__return_true', 'args' => array( 'round' => array( 'validate_callback' => static fn( $v ) => absint( $v ) > 0 ) ) ) );
@@ -15,7 +15,7 @@ final class AE_REST {
 	}
 
 	public function results( WP_REST_Request $request ): WP_REST_Response {
-		$data = AE_Results::instance()->latest( sanitize_title( $request['election'] ), absint( $request['round'] ), sanitize_key( $request['position'] ), sanitize_key( $request['scope'] ) );
+		$data = TSE_Results::instance()->latest( sanitize_title( $request['election'] ), absint( $request['round'] ), sanitize_key( $request['position'] ), sanitize_key( $request['scope'] ) );
 		if ( null === $data ) { return new WP_REST_Response( array( 'code' => 'ae_contest_not_found', 'message' => 'Disputa nao encontrada.' ), 404 ); }
 		// Sinalizador explicito para consumidores externos nao precisarem interpretar o texto livre de 'situation'.
 		$data['candidates'] = array_map( static function ( array $candidate ): array {
@@ -35,7 +35,7 @@ final class AE_REST {
 	public function enqueue( WP_REST_Request $request ): WP_REST_Response {
 		$type = sanitize_key( $request->get_param( 'type' ) );
 		if ( ! in_array( $type, array( 'import_candidates', 'collect_results' ), true ) ) { return new WP_REST_Response( array( 'message' => 'Tipo de job invalido.' ), 400 ); }
-		$id = AE_Job_Runner::enqueue( $type, (array) $request->get_param( 'payload' ) );
+		$id = TSE_Job_Runner::enqueue( $type, (array) $request->get_param( 'payload' ) );
 		return new WP_REST_Response( array( 'job_id' => $id, 'state' => 'queued' ), 202 );
 	}
 

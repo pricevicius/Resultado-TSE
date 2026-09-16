@@ -2,7 +2,7 @@
 defined( 'ABSPATH' ) || exit;
 
 /** Discovers official TSE files. Editors never need to assemble or paste a URL. */
-final class AE_TSE_Discovery {
+final class TSE_Discovery {
 	private const CANDIDATES_URL = 'https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_cand/consulta_cand_%d.zip';
 	private const UFS = array(
 		'ac' => 'Acre', 'al' => 'Alagoas', 'ap' => 'Amapá', 'am' => 'Amazonas', 'ba' => 'Bahia', 'ce' => 'Ceará', 'df' => 'Distrito Federal', 'es' => 'Espírito Santo', 'go' => 'Goiás', 'ma' => 'Maranhão', 'mt' => 'Mato Grosso', 'ms' => 'Mato Grosso do Sul', 'mg' => 'Minas Gerais', 'pa' => 'Pará', 'pb' => 'Paraíba', 'pr' => 'Paraná', 'pe' => 'Pernambuco', 'pi' => 'Piauí', 'rj' => 'Rio de Janeiro', 'rn' => 'Rio Grande do Norte', 'rs' => 'Rio Grande do Sul', 'ro' => 'Rondônia', 'rr' => 'Roraima', 'sc' => 'Santa Catarina', 'sp' => 'São Paulo', 'se' => 'Sergipe', 'to' => 'Tocantins',
@@ -29,7 +29,7 @@ final class AE_TSE_Discovery {
 		$environment = sanitize_key( $payload['environment'] ?? 'oficial' );
 		$year = max( 2022, absint( $payload['year'] ?? 2026 ) );
 		$url = self::config_url( $environment );
-		$catalog = AE_TSE_Client::instance()->fetch_json( $url, false );
+		$catalog = TSE_Client::instance()->fetch_json( $url, false );
 		if ( empty( $catalog['pl'] ) || ! is_array( $catalog['pl'] ) ) {
 			throw new RuntimeException( 'O EA11 do TSE não contém eleições disponíveis.' );
 		}
@@ -51,7 +51,7 @@ final class AE_TSE_Discovery {
 		}
 		update_option( 'ae_tse_environment', $environment, false );
 		update_option( 'ae_tse_catalog_checked_at', current_time( 'mysql', true ), false );
-		AE_Logger::write( 'info', 'tse_catalog_synced', array( 'environment' => $environment, 'year' => $year, 'elections' => $matched, 'url' => $url ) );
+		TSE_Logger::write( 'info', 'tse_catalog_synced', array( 'environment' => $environment, 'year' => $year, 'elections' => $matched, 'url' => $url ) );
 		return array( 'complete' => true );
 	}
 

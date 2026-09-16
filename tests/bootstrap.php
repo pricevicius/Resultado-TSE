@@ -6,5 +6,5 @@ if ( ! file_exists( $wp_tests_dir . '/includes/functions.php' ) ) {
 	exit( 1 );
 }
 require_once $wp_tests_dir . '/includes/functions.php';
-tests_add_filter( 'muplugins_loaded', static function () { require dirname( __DIR__ ) . '/apuracao-eleitoral.php'; } );
+tests_add_filter( 'muplugins_loaded', static function () { require dirname( __DIR__ ) . '/tse-apuracao.php'; } );
 require $wp_tests_dir . '/includes/bootstrap.php';

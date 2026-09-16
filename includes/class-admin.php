@@ -1,10 +1,10 @@
 <?php
 defined( 'ABSPATH' ) || exit;
 
-final class AE_Admin {
-	private static ?AE_Admin $instance = null;
+final class TSE_Admin {
+	private static ?TSE_Admin $instance = null;
 	private const PAGE = 'apuracao-eleitoral';
-	public static function instance(): AE_Admin { return self::$instance ??= new self(); }
+	public static function instance(): TSE_Admin { return self::$instance ??= new self(); }
 
 	public function register(): void {
 		add_action( 'admin_menu', array( $this, 'menu' ) );
@@ -16,15 +16,15 @@ final class AE_Admin {
 	public function menu(): void { add_menu_page( 'Apuração Eleitoral', 'Apuração', 'manage_options', self::PAGE, array( $this, 'page' ), 'dashicons-chart-bar', 58 ); }
 	public function assets( string $hook ): void {
 		if ( 'toplevel_page_' . self::PAGE !== $hook ) { return; }
-		wp_enqueue_style( 'ae-admin', AE_URL . 'assets/css/ae-admin.css', array(), AE_VERSION );
-		wp_enqueue_script( 'ae-admin', AE_URL . 'assets/js/ae-admin.js', array(), AE_VERSION, true );
+		wp_enqueue_style( 'ae-admin', TSE_APURACAO_URL . 'assets/css/ae-admin.css', array(), TSE_APURACAO_VERSION );
+		wp_enqueue_script( 'ae-admin', TSE_APURACAO_URL . 'assets/js/ae-admin.js', array(), TSE_APURACAO_VERSION, true );
 		wp_localize_script( 'ae-admin', 'AEAdmin', array( 'ajaxUrl' => admin_url( 'admin-ajax.php' ), 'nonce' => wp_create_nonce( 'ae_admin_status' ) ) );
 	}
 
 	public function page(): void {
 		$this->guard(); $tab = sanitize_key( $_GET['tab'] ?? 'overview' ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		if ( ! in_array( $tab, array( 'overview', 'setup', 'import', 'jobs', 'logs' ), true ) ) { $tab = 'overview'; }
-		?><div class="wrap ae-admin"><div class="ae-title"><div><h1>Apuração Eleitoral</h1><p>Configure, importe e acompanhe a apuração sem sair do WordPress.</p></div><span class="ae-version">v<?php echo esc_html( AE_VERSION ); ?></span></div><?php $this->notice(); ?><nav class="nav-tab-wrapper"><?php foreach ( array( 'overview'=>'Visão geral', 'setup'=>'Configuração', 'import'=>'Importar e coletar', 'jobs'=>'Fila e progresso', 'logs'=>'Logs' ) as $key=>$label ) : ?><a class="nav-tab <?php echo $tab === $key ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( $this->url( $key ) ); ?>"><?php echo esc_html( $label ); ?></a><?php endforeach; ?></nav><?php call_user_func( array( $this, 'tab_' . $tab ) ); ?></div><?php
+		?><div class="wrap ae-admin"><div class="ae-title"><div><h1>Apuração Eleitoral</h1><p>Configure, importe e acompanhe a apuração sem sair do WordPress.</p></div><span class="ae-version">v<?php echo esc_html( TSE_APURACAO_VERSION ); ?></span></div><?php $this->notice(); ?><nav class="nav-tab-wrapper"><?php foreach ( array( 'overview'=>'Visão geral', 'setup'=>'Configuração', 'import'=>'Importar e coletar', 'jobs'=>'Fila e progresso', 'logs'=>'Logs' ) as $key=>$label ) : ?><a class="nav-tab <?php echo $tab === $key ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( $this->url( $key ) ); ?>"><?php echo esc_html( $label ); ?></a><?php endforeach; ?></nav><?php call_user_func( array( $this, 'tab_' . $tab ) ); ?></div><?php
 	}
 
 	private function tab_overview(): void {
@@ -72,7 +72,7 @@ final class AE_Admin {
 		$this->verify( 'ae_sync_tse' );
 		$environment = 'simulado' === sanitize_key( $_POST['environment'] ?? '' ) ? 'simulado' : 'oficial';
 		$year = max( 2022, absint( $_POST['year'] ?? 2026 ) );
-		$id = AE_Job_Runner::enqueue( 'sync_tse', array( 'environment' => $environment, 'year' => $year ) );
+		$id = TSE_Job_Runner::enqueue( 'sync_tse', array( 'environment' => $environment, 'year' => $year ) );
 		$this->redirect( 'jobs', 'Sincronização oficial adicionada à fila. Job #' . $id . '.' );
 	}
 
@@ -82,13 +82,13 @@ final class AE_Admin {
 		if(!$id){$wpdb->insert($p.'elections',array('slug'=>$slug,'name'=>$name,'year'=>$year,'timezone'=>'America/Sao_Paulo','status'=>'active','config_json'=>'{}','created_at'=>$now,'updated_at'=>$now));$id=(int)$wpdb->insert_id;}else{$wpdb->update($p.'elections',array('name'=>$name,'status'=>'active','updated_at'=>$now),array('id'=>$id));}
 		$items=array(array(1,'0001','Presidente','BR','BR','Brasil',1),array(2,'0001','Presidente','BR','BR','Brasil',1)); foreach($this->ufs() as $code=>$label){$items[]=array(1,'0003','Governador','UF',$code,$label,1);$items[]=array(2,'0003','Governador','UF',$code,$label,1);$items[]=array(1,'0005','Senador','UF',$code,$label,1);}
 		foreach($items as $item){list($round,$position_code,$position_name,$scope_type,$scope_code,$scope_name,$seats)=$item;$external=$year.'-r'.$round.'-'.$position_code.'-'.$scope_code;$sql=$wpdb->prepare("INSERT INTO {$p}contests (election_id,external_id,round_no,position_code,position_name,scope_type,scope_code,scope_name,seats,active,config_json) VALUES (%d,%s,%d,%s,%s,%s,%s,%s,%d,1,'{}') ON DUPLICATE KEY UPDATE position_name=VALUES(position_name),scope_name=VALUES(scope_name),seats=VALUES(seats),active=1",$id,$external,$round,$position_code,$position_name,$scope_type,$scope_code,$scope_name,$seats);$wpdb->query($sql);} // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		AE_Logger::write('info','quick_setup_completed',array('election_id'=>$id,'year'=>$year,'contests'=>count($items)));$this->redirect('setup','Eleição preparada com '.count($items).' disputas.');
+		TSE_Logger::write('info','quick_setup_completed',array('election_id'=>$id,'year'=>$year,'contests'=>count($items)));$this->redirect('setup','Eleição preparada com '.count($items).' disputas.');
 	}
 
-	public function save_contest(): void { $this->verify('ae_save_contest'); global $wpdb; $table=$wpdb->prefix.'ae_contests'; $data=array('election_id'=>absint($_POST['election_id']??0),'round_no'=>max(1,absint($_POST['round_no']??1)),'position_code'=>sanitize_key(wp_unslash($_POST['position_code']??'')),'position_name'=>sanitize_text_field(wp_unslash($_POST['position_name']??'')),'scope_type'=>strtoupper(sanitize_key(wp_unslash($_POST['scope_type']??''))),'scope_code'=>strtoupper(sanitize_key(wp_unslash($_POST['scope_code']??''))),'scope_name'=>sanitize_text_field(wp_unslash($_POST['scope_name']??'')),'seats'=>max(1,absint($_POST['seats']??1)),'active'=>1,'config_json'=>'{}'); $data['external_id']='manual-'.$data['round_no'].'-'.$data['position_code'].'-'.$data['scope_code']; $wpdb->replace($table,$data); AE_Logger::write('info','contest_saved',array('contest_id'=>(int)$wpdb->insert_id));$this->redirect('setup','Disputa adicionada.'); }
-	public function start_import(): void { $this->verify('ae_start_import');global $wpdb;$election_id=absint($_POST['election_id']??0);$year=absint($wpdb->get_var($wpdb->prepare("SELECT year FROM {$wpdb->prefix}ae_elections WHERE id=%d",$election_id)));if(!$election_id||!$year)$this->redirect('import','Selecione uma eleição válida.','error');$payload=array('election_id'=>$election_id,'source_url'=>AE_TSE_Discovery::candidates_url($year),'format'=>'zip');$id=AE_Job_Runner::enqueue('import_candidates',$payload);$this->redirect('jobs','Importação oficial de candidatos adicionada à fila. Job #'.$id.'.'); }
+	public function save_contest(): void { $this->verify('ae_save_contest'); global $wpdb; $table=$wpdb->prefix.'ae_contests'; $data=array('election_id'=>absint($_POST['election_id']??0),'round_no'=>max(1,absint($_POST['round_no']??1)),'position_code'=>sanitize_key(wp_unslash($_POST['position_code']??'')),'position_name'=>sanitize_text_field(wp_unslash($_POST['position_name']??'')),'scope_type'=>strtoupper(sanitize_key(wp_unslash($_POST['scope_type']??''))),'scope_code'=>strtoupper(sanitize_key(wp_unslash($_POST['scope_code']??''))),'scope_name'=>sanitize_text_field(wp_unslash($_POST['scope_name']??'')),'seats'=>max(1,absint($_POST['seats']??1)),'active'=>1,'config_json'=>'{}'); $data['external_id']='manual-'.$data['round_no'].'-'.$data['position_code'].'-'.$data['scope_code']; $wpdb->replace($table,$data); TSE_Logger::write('info','contest_saved',array('contest_id'=>(int)$wpdb->insert_id));$this->redirect('setup','Disputa adicionada.'); }
+	public function start_import(): void { $this->verify('ae_start_import');global $wpdb;$election_id=absint($_POST['election_id']??0);$year=absint($wpdb->get_var($wpdb->prepare("SELECT year FROM {$wpdb->prefix}ae_elections WHERE id=%d",$election_id)));if(!$election_id||!$year)$this->redirect('import','Selecione uma eleição válida.','error');$payload=array('election_id'=>$election_id,'source_url'=>TSE_Discovery::candidates_url($year),'format'=>'zip');$id=TSE_Job_Runner::enqueue('import_candidates',$payload);$this->redirect('jobs','Importação oficial de candidatos adicionada à fila. Job #'.$id.'.'); }
 	public function retry_job(): void { $this->verify('ae_retry_job');global $wpdb;$id=absint($_POST['job_id']??0);$wpdb->update($wpdb->prefix.'ae_jobs',array('state'=>'retry','attempts'=>0,'run_after'=>current_time('mysql',true),'locked_until'=>null,'lock_token'=>null,'last_error'=>null),array('id'=>$id));$this->redirect('jobs','Job #'.$id.' recolocado na fila.'); }
-	public function run_jobs(): void { $this->verify('ae_run_jobs');AE_Job_Runner::instance()->tick();$this->redirect('jobs','Fila processada manualmente.'); }
+	public function run_jobs(): void { $this->verify('ae_run_jobs');TSE_Job_Runner::instance()->tick();$this->redirect('jobs','Fila processada manualmente.'); }
 	public function ajax_status(): void { $this->guard();check_ajax_referer('ae_admin_status','nonce');global $wpdb;$table=$wpdb->prefix.'ae_jobs';$states=$wpdb->get_results("SELECT state,COUNT(*) total FROM {$table} GROUP BY state",OBJECT_K); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		wp_send_json_success(array('summary'=>array_map(static fn($row)=>(int)$row->total,$states),'html'=>$this->jobs_html())); }
 
