@@ -1,0 +1,30 @@
+{
+  "ele": "999999",
+  "t": "1",
+  "f": "s",
+  "tpabr": "uf",
+  "cdabr": "es",
+  "dg": "15/09/2026",
+  "hg": "09:00:00",
+  "idg": "1",
+  "tf": "n",
+  "and": "n",
+  "md": "n",
+  "carg": [{
+    "cd": "3",
+    "nv": "1",
+    "agr": [{
+      "tp": "i",
+      "par": [{
+        "sg": "AAA",
+        "cand": [
+          {"n":"10","sqcand":"1001","nm":"Candidata Um","nmu":"UM","seq":"1","e":"n","st":"Não eleito","vap":"0","pvap":"0,00"},
+          {"n":"20","sqcand":"1002","nm":"Candidato Dois","nmu":"DOIS","seq":"2","e":"n","st":"Não eleito","vap":"0","pvap":"0,00"}
+        ]
+      }]
+    }]
+  }],
+  "s": {"ts":"2500","st":"0","pst":"0,00","snt":"2500"},
+  "e": {"te":"1500000","est":"0"},
+  "v": {"tv":"0","vv":"0","vb":"0","tvn":"0"}
+}

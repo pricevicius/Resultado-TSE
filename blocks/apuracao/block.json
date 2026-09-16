@@ -1,0 +1,19 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "apuracao-eleitoral/resultados",
+  "title": "Apuração eleitoral",
+  "category": "widgets",
+  "icon": "chart-bar",
+  "description": "Exibe a apuração e atualiza no cliente pela API local do WordPress.",
+  "textdomain": "apuracao-eleitoral",
+  "attributes": {
+    "eleicao": { "type": "string", "default": "eleicoes-2026" },
+    "turno": { "type": "number", "default": 1 },
+    "cargo": { "type": "string" },
+    "abrangencia": { "type": "string", "default": "BR" },
+    "titulo": { "type": "string" }
+  },
+  "supports": { "html": false },
+  "render": "file:./render.php"
+}
