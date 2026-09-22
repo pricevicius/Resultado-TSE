@@ -3,6 +3,10 @@
  * Disparo direto do worker de coleta, independente do WP-Cron por tráfego.
  * Uso: php bin/tse-tick.php (chamado por um cron real do sistema).
  */
+if ( 'cli' !== PHP_SAPI ) {
+	http_response_code( 403 );
+	exit( "Somente CLI.\n" );
+}
 define( 'WP_USE_THEMES', false );
 require_once dirname( __DIR__, 4 ) . '/wp-load.php';
 

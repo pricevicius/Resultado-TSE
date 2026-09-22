@@ -3,8 +3,8 @@ defined( 'ABSPATH' ) || exit;
 
 final class AE_Job_Runner {
 	private static ?AE_Job_Runner $instance = null;
-	private const LOCK_KEY = 'ae_job_runner_lock';
-	private const LOCK_TTL = 55;
+	/** A MySQL named lock is shared by CLI, WP-Cron and web workers without Redis. */
+	private const LOCK_NAME = 'ae_apuracao_job_runner';
 
 	public static function instance(): AE_Job_Runner { return self::$instance ??= new self(); }
 
@@ -20,10 +20,11 @@ final class AE_Job_Runner {
 	}
 
 	public function tick(): void {
-		if ( ! wp_cache_add( self::LOCK_KEY, 1, 'apuracao-eleitoral', self::LOCK_TTL ) ) { return; }
+		if ( ! $this->acquire_lock() ) { return; }
 		try {
 			// Do not create or retry a burst of jobs while the TSE circuit breaker is active.
 			if ( absint( get_option( 'ae_tse_blocked_until', 0 ) ) > time() ) { return; }
+			$this->recover_expired_jobs();
 			$this->enqueue_due_collections();
 			$deadline = microtime( true ) + 40;
 			while ( microtime( true ) < $deadline ) {
@@ -33,7 +34,39 @@ final class AE_Job_Runner {
 				if ( ! $job ) { break; }
 				$this->run( $job );
 			}
-		} finally { wp_cache_delete( self::LOCK_KEY, 'apuracao-eleitoral' ); }
+		} finally { $this->release_lock(); }
+	}
+
+	/**
+	 * The default WordPress object cache is request-local, so wp_cache_add() cannot
+	 * coordinate overlapping system-cron processes. The database is shared by all
+	 * workers and therefore provides a real process-wide mutex.
+	 */
+	private function acquire_lock(): bool {
+		global $wpdb;
+		return '1' === (string) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 0)', self::LOCK_NAME ) );
+	}
+
+	private function release_lock(): void {
+		global $wpdb;
+		$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', self::LOCK_NAME ) );
+	}
+
+	/** Return work abandoned by a terminated PHP process to the normal retry path. */
+	private function recover_expired_jobs(): void {
+		global $wpdb;
+		$table = $wpdb->prefix . 'ae_jobs';
+		$now = current_time( 'mysql', true );
+		$recovered = $wpdb->query( $wpdb->prepare(
+			"UPDATE {$table} SET state='retry', run_after=%s, locked_until=NULL, lock_token=NULL, last_error=%s, updated_at=%s WHERE state='running' AND locked_until IS NOT NULL AND locked_until < %s",
+			$now,
+			'Worker interrompido; job recuperado automaticamente após expirar o lock.',
+			$now,
+			$now
+		) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		if ( $recovered ) {
+			AE_Logger::write( 'warning', 'expired_jobs_recovered', array( 'count' => (int) $recovered ) );
+		}
 	}
 
 	/** Enqueues one collection per due contest and avoids duplicates already in flight. */
@@ -45,6 +78,8 @@ final class AE_Job_Runner {
 			$config = json_decode( (string) $contest->config_json, true );
 			$collection = is_array( $config ) ? ( $config['collection'] ?? array() ) : array();
 			if ( empty( $collection['enabled'] ) || empty( $collection['source_url'] ) ) { continue; }
+			$next_attempt = strtotime( (string) ( $collection['next_attempt_at'] ?? '' ) . ' UTC' );
+			if ( $next_attempt && $next_attempt > time() ) { continue; }
 			$interval = max( 30, min( 900, absint( $collection['interval'] ?? 60 ) ) );
 			$last = $wpdb->get_var( $wpdb->prepare( "SELECT MAX(captured_at) FROM {$p}snapshots WHERE contest_id=%d AND status='valid'", $contest->id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			if ( $last && strtotime( $last . ' UTC' ) > time() - $interval ) { continue; }

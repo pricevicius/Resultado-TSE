@@ -26,7 +26,7 @@ Os demais atributos são `uf`, `turno`, `limite`, `atualizar` e `titulo`.
 
 - teto interno de 20 requisições/s, abaixo do limite de 100/s informado pelo TSE;
 - ETag/Last-Modified e tratamento de 304;
-- pausa preventiva de dez minutos para 403, 404 e 429;
+- pausa preventiva de dez minutos para 403 e 429; 404 usa backoff por fonte (10 min a 6h) sem bloquear as demais disputas;
 - retry exponencial e último snapshot válido;
 - HTTPS restrito aos domínios oficiais `*.tse.jus.br`;
 - payload bruto, SHA-256 e histórico de snapshots.

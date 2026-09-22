@@ -1,22 +1,20 @@
 <?php
 /**
  * Plugin Name:  TSE Apuração
- * Plugin URI:   https://tribunaonline.com.br
  * Description:  Publica snapshots auditáveis de resultados eleitorais do TSE. Use o shortcode [tse_apuracao] ou o bloco Apuração eleitoral.
- * Version:      2.2.2
+ * Version:      2.3.0
  * Requires PHP: 8.1
- * Author:       Tribuna Online
  * License:      GPL-2.0-or-later
  * Text Domain:  tse-apuracao
  */
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'TSE_APURACAO_VERSION', '2.2.2' );
+define( 'TSE_APURACAO_VERSION', '2.3.0' );
 define( 'TSE_APURACAO_DIR',     plugin_dir_path( __FILE__ ) );
 define( 'TSE_APURACAO_URL',     plugin_dir_url( __FILE__ ) );
 
-define( 'AE_VERSION', '2.2.2' );
+define( 'AE_VERSION', '2.3.0' );
 define( 'AE_FILE', __FILE__ );
 define( 'AE_DIR', TSE_APURACAO_DIR );
 define( 'AE_URL', TSE_APURACAO_URL );

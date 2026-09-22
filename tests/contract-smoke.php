@@ -14,6 +14,10 @@ if ( 'not_started' !== $zero['totals']['progress'] || 0 !== $zero['totals']['tot
 if ( 'final' !== $final['totals']['progress'] || ! $final['totals']['final'] || 2 !== array_sum( array_column( $final['candidates'], 'elected' ) ) || 'Não eleito' !== $final['candidates'][2]['situation'] ) {
 	throw new RuntimeException( 'EA20 final contract failed.' );
 }
+$runoff = $method->invoke( AE_TSE_Client::instance(), array( 'and' => 'f', 'tf' => 's', 's' => array(), 'v' => array(), 'cand' => array( array( 'sqcand' => 'runoff-1', 'e' => 's', 'st' => '2º turno' ) ) ), 'EA20' );
+if ( 0 !== $runoff['candidates'][0]['elected'] ) {
+	throw new RuntimeException( 'EA20 runoff candidate must not be marked elected.' );
+}
 if ( 'https://resultados.tse.jus.br/oficial/comum/config/ele-c.json' !== AE_TSE_Discovery::config_url( 'oficial' ) ) {
 	throw new RuntimeException( 'Official EA11 URL contract failed.' );
 }

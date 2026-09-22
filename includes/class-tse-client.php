@@ -48,9 +48,10 @@ final class AE_TSE_Client {
 		try {
 			$raw = $this->fetch_json( $url, true );
 		} catch ( AE_TSE_Source_Not_Found $e ) {
-			$this->disable_missing_result_source( $contest_id, $url );
-			return array( 'complete' => true, 'source_disabled' => true );
+			$this->defer_missing_result_source( $contest_id, $url );
+			return array( 'complete' => true, 'source_deferred' => true );
 		}
+		$this->mark_result_source_checked( $contest_id, $url );
 		if ( null === $raw ) { return array( 'complete' => true, 'unchanged' => true ); }
 		$normalized = $this->normalize_result( $raw, $kind );
 		if ( ! $this->is_valid_result( $raw, $normalized, $kind ) ) { throw new RuntimeException( 'Snapshot rejeitado: estrutura essencial do TSE ausente.' ); }
@@ -127,8 +128,12 @@ final class AE_TSE_Client {
 		return ! empty( $collection['enabled'] ) && esc_url_raw( (string) ( $collection['source_url'] ?? '' ) ) === $url;
 	}
 
-	/** Prevent one bad generated URL from re-entering the queue every minute. */
-	private function disable_missing_result_source( int $contest_id, string $url ): void {
+	/**
+	 * A freshly published TSE tree can briefly expose EA11 before every EA20 file.
+	 * Defer an individual 404 with exponential backoff instead of permanently
+	 * disabling its contest; a temporary publication gap then heals by itself.
+	 */
+	private function defer_missing_result_source( int $contest_id, string $url ): void {
 		global $wpdb;
 		$p = $wpdb->prefix . 'ae_';
 		$config_json = $wpdb->get_var( $wpdb->prepare( "SELECT config_json FROM {$p}contests WHERE id=%d", $contest_id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
@@ -139,10 +144,25 @@ final class AE_TSE_Client {
 			AE_Logger::write( 'info', 'stale_404_ignored', array( 'contest_id' => $contest_id, 'source_url' => $url ) );
 			return;
 		}
-		$config['collection']['enabled'] = false;
-		$config['collection']['disabled_reason'] = 'O TSE não publicou este arquivo (HTTP 404).';
+		$attempts = absint( $config['collection']['missing_attempts'] ?? 0 ) + 1;
+		$delay = min( 6 * HOUR_IN_SECONDS, 10 * MINUTE_IN_SECONDS * ( 2 ** min( 5, $attempts - 1 ) ) );
+		$config['collection']['missing_attempts'] = $attempts;
+		$config['collection']['last_missing_at'] = current_time( 'mysql', true );
+		$config['collection']['next_attempt_at'] = gmdate( 'Y-m-d H:i:s', time() + $delay );
+		$config['collection']['disabled_reason'] = 'TSE respondeu HTTP 404; nova tentativa programada automaticamente.';
 		$wpdb->update( $p . 'contests', array( 'config_json' => wp_json_encode( $config ) ), array( 'id' => $contest_id ) );
-		AE_Logger::write( 'warning', 'result_source_disabled', array( 'contest_id' => $contest_id, 'source_url' => $url, 'reason' => 'HTTP 404' ) );
+		AE_Logger::write( 'warning', 'result_source_deferred', array( 'contest_id' => $contest_id, 'source_url' => $url, 'reason' => 'HTTP 404', 'attempts' => $attempts, 'retry_after' => $config['collection']['next_attempt_at'] ) );
+	}
+
+	/** Record freshness independently from snapshot creation: valid HTTP 304 is not stale data. */
+	private function mark_result_source_checked( int $contest_id, string $url ): void {
+		update_option( 'ae_result_checked_' . $contest_id, current_time( 'mysql', true ), false );
+		global $wpdb;
+		$config_json = $wpdb->get_var( $wpdb->prepare( "SELECT config_json FROM {$wpdb->prefix}ae_contests WHERE id=%d", $contest_id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$config = json_decode( (string) $config_json, true );
+		if ( ! is_array( $config ) || esc_url_raw( (string) ( $config['collection']['source_url'] ?? '' ) ) !== $url || empty( $config['collection']['missing_attempts'] ) ) { return; }
+		unset( $config['collection']['missing_attempts'], $config['collection']['last_missing_at'], $config['collection']['next_attempt_at'], $config['collection']['disabled_reason'] );
+		$wpdb->update( $wpdb->prefix . 'ae_contests', array( 'config_json' => wp_json_encode( $config ) ), array( 'id' => $contest_id ) );
 	}
 
 	private function candidate_rows( array $raw ): array {

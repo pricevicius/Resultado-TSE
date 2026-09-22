@@ -178,7 +178,9 @@ Proteções implementadas:
 - fila com lock contra workers concorrentes do plugin;
 - `If-None-Match`/`If-Modified-Since`;
 - nenhuma versão nova para 304 ou SHA repetido;
-- circuit breaker de dez minutos após 403, 404 ou 429;
+- circuit breaker de dez minutos após 403 ou 429; 404 usa backoff por fonte
+  (10 min a 6h, ver "Autonomia operacional") em vez de bloqueio global, para não
+  desligar 100+ disputas válidas por causa de uma única URL ainda não publicada;
 - timeout, redirecionamentos limitados e HTTPS `*.tse.jus.br`;
 - retry exponencial e último snapshot válido.
 
@@ -326,10 +328,12 @@ independente de tráfego:
   (`wp-load.php`) e chama `AE_Job_Runner::instance()->tick()` diretamente, sem passar
   pelo agendamento do WP-Cron;
 - [`bin/tse-tick-loop.sh`](bin/tse-tick-loop.sh): dispara esse script a cada 15 s
-  (4x por minuto) via `docker exec` no container da aplicação, com saída em
-  `~/jobs/tribunaonline/tse-tick.log`;
-- crontab real do host (usuário `price`) chamando o loop a cada minuto:
-  `* * * * * .../tse-apuracao/bin/tse-tick-loop.sh`.
+  (4x por minuto), com saída em arquivo de log configurável por variável de
+  ambiente (`TSE_APURACAO_LOG_FILE`);
+- crontab real do host chamando o loop a cada minuto:
+  `* * * * * .../tse-apuracao/bin/tse-tick-loop.sh`. Container Docker e caminho
+  de log ficam fora deste repositório, configurados por ambiente
+  (`TSE_APURACAO_CONTAINER`, `TSE_APURACAO_LOG_FILE`).
 
 O lock interno do `AE_Job_Runner` (`wp_cache_add` com TTL de 55 s) garante que essas
 chamadas extras nunca rodem em paralelo com o WP-Cron nem entre si — na pior das
@@ -338,7 +342,8 @@ imediatamente sem custo. O WP-Cron continua ativo como redundância.
 
 Resultado logo após a ativação: fila caiu de 105 para a faixa de dezenas em menos de
 2 minutos e a idade máxima dos snapshots voltou para dentro do intervalo configurado
-(< 90 s). Ver `~/jobs/tribunaonline/tse-tick.log` para o histórico de execuções.
+(< 90 s). Ver o arquivo de log configurado em `TSE_APURACAO_LOG_FILE` para o
+histórico de execuções.
 
 ### Ação de acompanhamento
 
@@ -433,17 +438,31 @@ não) a folga estimada aqui.
   **e** para o homolog (confirmado desatualizado);
 - sincronizar código corrigido hoje (2º turno, votos anulados, seats do Senado,
   card, CSS) com homolog e produção;
-- adicionar `Cache-Control` em `tse/v1/resultado` para o Cloudflare conseguir
-  cachear esse endpoint (ver plano de cache);
+- ~~adicionar `Cache-Control` em `tse/v1/resultado`~~ concluído na versão 2.3.0;
+  o endpoint legado do widget agora também devolve ETag, 304 e a política de cache
+  de borda;
 - Redis/Memcached, InnoDB e CDN que preserve cabeçalhos;
 - rodar o teste de carga já definido (200 VUs, p95 < 400 ms, erro < 1%) — não
   depende do TSE, pode ser feito agora;
 - validar observabilidade, rollback, retenção e treinamento editorial;
 - migrar/remover classes legadas após validar todos os shortcodes existentes.
 
+## Autonomia operacional — versão 2.3.0
+
+- o worker usa lock nomeado no MySQL, compartilhado entre WP-Cron, CLI e cron de
+  sistema mesmo quando não há Redis/Memcached;
+- jobs que ficaram em `running` após encerramento de processo são recuperados
+  automaticamente quando o lock expira;
+- HTTP 404 de uma fonte EA20 não desativa a disputa: a nova tentativa ocorre com
+  backoff de 10 minutos até seis horas, sem martelar o TSE e sem ação editorial;
+- uma resposta 304 registra a última consulta bem-sucedida. Assim, durante uma
+  parcial estável, a interface não apresenta “Dados atrasados” apenas porque o
+  snapshot não mudou;
+- a saúde REST informa se `ZipArchive` está disponível. A importação de CSVs em
+  ZIP requer `php-zip` no ambiente.
+
 ## Histórico desta rodada
 
-- repositório consolidado em `/home/price/jobs/tribunaonline/www/wp-content/plugins/tse-apuracao`;
 - painel visual e fluxo de jobs;
 - configuração automática EA11 e fontes EA20;
 - importação automática de candidatos;
