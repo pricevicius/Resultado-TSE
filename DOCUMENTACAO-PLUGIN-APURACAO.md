@@ -317,8 +317,16 @@ Janelas: 15–17/09/2026 e 22–24/09/2026, 9h–12h e 14h–17h (Brasília). Es
    mantendo último snapshot ainda não testada isoladamente;
 8. confirmar no navegador que nenhum domínio TSE é acessado — não testado
    nesta rodada (testes de hoje foram via CLI/wp eval, não navegador);
-9. executar carga da REST local — ainda não executado (200 VUs, p95<400ms,
-   erro<1%, definido em "Avaliação de performance");
+9. ✅ executar carga da REST local — rodado em 22/09/2026 com k6 (`grafana/k6`
+   via Docker, `--network host`) contra `apuracao/v1/results/tse-21270/1/0001/br`
+   (disputa real do simulado, com snapshot válido): 211.977 requisições em
+   2min20s, rampa até 200 VUs (perfil reduzido de 5min para ~2min20s em
+   relação ao `tests/load/results.js` original, só para esta rodada de
+   validação). **p95 = 179,86 ms** (meta <400 ms), **0% de erro** (meta <1%),
+   100% dos checks (`200/304` + header `Cache-Control` presente). Alvo batido
+   com folga — mas atenção: isso mede a REST do WordPress local servindo do
+   cache de snapshot já gravado, não o caminho de coleta (`AE_TSE_Client`)
+   sob carga simultânea de leitura;
 10. anexar fixtures sanitizadas e registrar hash, horário, versão e aprovação
     — ainda não feito.
 
