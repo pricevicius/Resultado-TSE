@@ -1,28 +1,28 @@
 <?php
 defined( 'ABSPATH' ) || exit;
 
-require_once TSE_APURACAO_DIR . 'includes/class-schema.php';
-require_once TSE_APURACAO_DIR . 'includes/class-logger.php';
-require_once TSE_APURACAO_DIR . 'includes/class-job-runner.php';
-require_once TSE_APURACAO_DIR . 'includes/class-tse-client.php';
-require_once TSE_APURACAO_DIR . 'includes/class-tse-discovery.php';
-require_once TSE_APURACAO_DIR . 'includes/class-results.php';
-require_once TSE_APURACAO_DIR . 'includes/class-candidate-catalog.php';
-require_once TSE_APURACAO_DIR . 'includes/class-rest.php';
-require_once TSE_APURACAO_DIR . 'includes/class-shortcodes.php';
-require_once TSE_APURACAO_DIR . 'includes/class-admin.php';
+require_once AE_DIR . 'includes/class-schema.php';
+require_once AE_DIR . 'includes/class-logger.php';
+require_once AE_DIR . 'includes/class-job-runner.php';
+require_once AE_DIR . 'includes/class-tse-client.php';
+require_once AE_DIR . 'includes/class-tse-discovery.php';
+require_once AE_DIR . 'includes/class-results.php';
+require_once AE_DIR . 'includes/class-candidate-catalog.php';
+require_once AE_DIR . 'includes/class-rest.php';
+require_once AE_DIR . 'includes/class-shortcodes.php';
+require_once AE_DIR . 'includes/class-admin.php';
 
-final class TSE_Plugin {
-	private static ?TSE_Plugin $instance = null;
+final class AE_Plugin {
+	private static ?AE_Plugin $instance = null;
 
-	public static function instance(): TSE_Plugin {
+	public static function instance(): AE_Plugin {
 		return self::$instance ??= new self();
 	}
 
 	public static function activate(): void {
 		add_filter( 'cron_schedules', array( self::instance(), 'minute_schedule' ) );
-		TSE_Schema::install();
-		if ( TSE_Schema::VERSION === get_option( 'ae_schema_version' ) ) { self::seed_2026(); }
+		AE_Schema::install();
+		if ( AE_Schema::VERSION === get_option( 'ae_schema_version' ) ) { self::seed_2026(); }
 		if ( ! wp_next_scheduled( 'ae_run_jobs' ) ) {
 			wp_schedule_event( time() + 60, 'ae_minute', 'ae_run_jobs' );
 		}
@@ -36,19 +36,19 @@ final class TSE_Plugin {
 	public function boot(): void {
 		add_filter( 'cron_schedules', array( $this, 'minute_schedule' ) );
 		// The option alone is not reliable after a partial restore or failed activation.
-		if ( ! TSE_Schema::is_ready() ) {
-			TSE_Schema::install();
-			if ( TSE_Schema::is_ready() ) { self::seed_2026(); }
+		if ( ! AE_Schema::is_ready() ) {
+			AE_Schema::install();
+			if ( AE_Schema::is_ready() ) { self::seed_2026(); }
 		}
 		if ( ! wp_next_scheduled( 'ae_run_jobs' ) ) {
 			wp_schedule_event( time() + 60, 'ae_minute', 'ae_run_jobs' );
 		}
-		add_action( 'ae_run_jobs', array( TSE_Job_Runner::instance(), 'tick' ) );
-		add_action( 'rest_api_init', array( TSE_REST::instance(), 'register_routes' ) );
-		add_action( 'init', array( TSE_Shortcodes::instance(), 'register' ) );
+		add_action( 'ae_run_jobs', array( AE_Job_Runner::instance(), 'tick' ) );
+		add_action( 'rest_api_init', array( AE_REST::instance(), 'register_routes' ) );
+		add_action( 'init', array( AE_Shortcodes::instance(), 'register' ) );
 		add_action( 'init', array( $this, 'register_blocks' ) );
 		if ( is_admin() ) {
-			TSE_Admin::instance()->register();
+			AE_Admin::instance()->register();
 			add_action( 'admin_init', array( $this, 'redirect_after_activation' ) );
 		}
 	}
@@ -67,7 +67,7 @@ final class TSE_Plugin {
 	}
 
 	public function register_blocks(): void {
-		register_block_type( TSE_APURACAO_DIR . 'blocks/apuracao' );
+		register_block_type( AE_DIR . 'blocks/apuracao' );
 	}
 
 	private static function seed_2026(): void {

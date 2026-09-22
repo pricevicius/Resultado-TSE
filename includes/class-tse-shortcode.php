@@ -84,8 +84,19 @@ class TSE_Shortcode {
             $data['candidatos'] = array_slice( $data['candidatos'], 0, $limite );
         }
 
-        return new WP_REST_Response( $data, 200 );
-    }
+		return self::cached_rest_response( $request, $data, $data['atualizado_em'] ?? null );
+	}
+
+	/** Keep the legacy endpoint used by the widget cacheable just like apuracao/v1. */
+	private static function cached_rest_response( WP_REST_Request $request, array $data, ?string $modified ): WP_REST_Response {
+		$etag = '"' . hash( 'sha256', wp_json_encode( $data ) ) . '"';
+		if ( trim( (string) $request->get_header( 'if-none-match' ) ) === $etag ) {
+			return new WP_REST_Response( null, 304, array( 'ETag' => $etag ) );
+		}
+		$headers = array( 'ETag' => $etag, 'Cache-Control' => 'public, max-age=30, s-maxage=60, stale-while-revalidate=300, stale-if-error=3600', 'Vary' => 'Accept-Encoding' );
+		if ( $modified ) { $headers['Last-Modified'] = gmdate( 'D, d M Y H:i:s', strtotime( $modified ) ) . ' GMT'; }
+		return new WP_REST_Response( $data, 200, $headers );
+	}
 
     /**
      * Renderiza o shortcode [tse_apuracao].
@@ -194,7 +205,7 @@ class TSE_Shortcode {
     /** Compatibility adapter: the historical widget only reads materialized snapshots. */
     private static function snapshot_resultado( string $cargo, string $uf, int $turno ): array {
         $code = TSE_API::CARGOS[ $cargo ] ?? $cargo;
-        $data = TSE_Results::instance()->latest(
+        $data = AE_Results::instance()->latest(
             'eleicoes-2026',
             max( 1, $turno ),
             str_pad( (string) $code, 4, '0', STR_PAD_LEFT ),
@@ -204,7 +215,7 @@ class TSE_Shortcode {
 			global $wpdb;
 			$p = $wpdb->prefix . 'ae_';
 			$slug = $wpdb->get_var( $wpdb->prepare( "SELECT e.slug FROM {$p}elections e INNER JOIN {$p}contests c ON c.election_id=e.id INNER JOIN {$p}snapshots s ON s.contest_id=c.id WHERE e.year=%d AND c.round_no=%d AND c.position_code=%s AND c.scope_code=%s AND s.status='valid' ORDER BY s.id DESC LIMIT 1", 2026, max( 1, $turno ), str_pad( (string) $code, 4, '0', STR_PAD_LEFT ), strtoupper( $uf ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-			if ( $slug ) { $data = TSE_Results::instance()->latest( $slug, max( 1, $turno ), str_pad( (string) $code, 4, '0', STR_PAD_LEFT ), strtoupper( $uf ) ); }
+			if ( $slug ) { $data = AE_Results::instance()->latest( $slug, max( 1, $turno ), str_pad( (string) $code, 4, '0', STR_PAD_LEFT ), strtoupper( $uf ) ); }
 		}
         if ( ! $data || empty( $data['snapshot'] ) ) {
             return array( 'erro' => 'Snapshot indisponível.' );
@@ -216,6 +227,8 @@ class TSE_Shortcode {
 		$pct = number_format_i18n( $pct_number, 2 ) . '%';
 		$captured_at = (string) ( $data['snapshot']['captured_at'] ?? '' );
 		$captured_timestamp = $captured_at ? strtotime( $captured_at ) : false;
+		$checked_at = (string) get_option( 'ae_result_checked_' . (int) ( $data['contest']['id'] ?? 0 ), '' );
+		$checked_timestamp = $checked_at ? strtotime( $checked_at ) : false;
         $candidates = array_map( static function ( array $candidate ): array {
             $situacao = (string) ( $candidate['situation'] ?? '' );
             return array(
@@ -233,13 +246,14 @@ class TSE_Shortcode {
             );
         }, $data['candidates'] );
         return array(
-            'atualizado_em' => $data['snapshot']['captured_at'],
+			'atualizado_em' => $data['snapshot']['captured_at'],
+			'consultado_em' => $checked_at ?: null,
             'horario' => $data['snapshot']['generated_at'] ?? '',
 			'status' => ( $totals['progress'] ?? '' ) === 'final' ? 'Totalizado' : ( ( $totals['progress'] ?? '' ) === 'not_started' ? 'Aguardando apuração' : 'Parcial' ),
             'pct_apurado' => $pct,
 			'pct_apurado_numero' => round( $pct_number, 2 ),
 			// Disputa "final" nao recebe mais atualizacoes do TSE; snapshot antigo ali e normal, nao atraso.
-			'atrasado' => 'final' !== ( $totals['progress'] ?? '' ) && ( ! $captured_timestamp || $captured_timestamp < time() - 3 * MINUTE_IN_SECONDS ),
+			'atrasado' => 'final' !== ( $totals['progress'] ?? '' ) && ( ! $checked_timestamp || $checked_timestamp < time() - 3 * MINUTE_IN_SECONDS ),
 			'votos_brancos' => (int) ( $totals['blank_votes'] ?? 0 ),
 			'votos_nulos' => (int) ( $totals['null_votes'] ?? 0 ),
 			'votos_anulados' => (int) ( $totals['annulled_votes'] ?? 0 ),

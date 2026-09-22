@@ -1,7 +1,7 @@
 <?php
 defined( 'ABSPATH' ) || exit;
 
-final class TSE_Logger {
+final class AE_Logger {
 	public static function write( string $level, string $event, array $context = array() ): void {
 		global $wpdb;
 		$wpdb->insert( $wpdb->prefix . 'ae_logs', array(

@@ -2,10 +2,10 @@
 defined( 'ABSPATH' ) || exit;
 
 /** Public, local-only candidate directory fed by TSE Dados Abertos and EA20 snapshots. */
-final class TSE_Candidate_Catalog {
+final class AE_Candidate_Catalog {
 	public static function render( array $atts = array() ): string {
 		global $wpdb;
-		wp_enqueue_style( 'tse-apuracao', TSE_APURACAO_URL . 'assets/css/tse-apuracao.css', array(), TSE_APURACAO_VERSION );
+		wp_enqueue_style( 'tse-apuracao', AE_URL . 'assets/css/tse-apuracao.css', array(), AE_VERSION );
 		$p = $wpdb->prefix . 'ae_';
 		$q = sanitize_text_field( wp_unslash( $_GET['ae_busca'] ?? '' ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$position = sanitize_text_field( wp_unslash( $_GET['ae_cargo'] ?? '' ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended

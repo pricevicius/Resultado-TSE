@@ -11,7 +11,7 @@ foreach ( $tabs as $tab => $expected ) {
 	$_GET['tab'] = $tab;
 	$wpdb->last_error = '';
 	ob_start();
-	TSE_Admin::instance()->page();
+	AE_Admin::instance()->page();
 	$html = ob_get_clean();
 	if ( $wpdb->last_error ) {
 		throw new RuntimeException( 'Database error on ' . $tab . ': ' . $wpdb->last_error );

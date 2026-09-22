@@ -1,7 +1,7 @@
 <?php
 defined( 'ABSPATH' ) || exit;
 
-final class TSE_Schema {
+final class AE_Schema {
 	public const VERSION = '2.0.2';
 
 	/** Checks both the migration marker and the physical tables before use. */
