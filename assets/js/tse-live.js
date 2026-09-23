@@ -145,11 +145,21 @@
             statusEl.textContent = data.status;
         }
 
-        // Atualiza timestamp
+        // Atualiza timestamp — texto exibido em horario local (fuso do site); dateTime continua em ISO/UTC (correto para o atributo HTML).
         const tsEl = widget.querySelector( '.tse-timestamp' );
         if ( tsEl && data.atualizado_em ) {
-            tsEl.textContent  = data.atualizado_em;
+            tsEl.textContent  = data.atualizado_em_local || data.atualizado_em;
             tsEl.dateTime     = data.atualizado_em;
+        }
+
+        const proximaEl = widget.querySelector( '.tse-proxima' );
+        if ( proximaEl ) {
+            if ( data.proxima_atualizacao_ts ) {
+                proximaEl.dataset.proxima = data.proxima_atualizacao_ts;
+                proximaEl.hidden = false;
+            } else {
+                proximaEl.hidden = true; // apuracao totalizada: nao ha proxima coleta
+            }
         }
 
         // Calcula max votos para escalar barras
@@ -226,6 +236,27 @@
         setInterval( () => updateWidget( widget ), intervalo * 1000 );
     }
 
+	function formatCountdown( seconds ) {
+		if ( seconds <= 0 ) return 'agora';
+		if ( seconds < 60 ) return seconds + 's';
+		const min = Math.floor( seconds / 60 );
+		const sec = seconds % 60;
+		return sec > 0 ? `${ min }min ${ sec }s` : `${ min }min`;
+	}
+
+	// Contagem regressiva local (não faz requisição): só reflete a estimativa que o
+	// servidor devolveu em proxima_atualizacao_ts a cada poll; nunca é a fonte da verdade.
+	function tickCountdowns() {
+		document.querySelectorAll( '.tse-proxima[data-proxima]' ).forEach( ( el ) => {
+			const target = parseInt( el.dataset.proxima, 10 );
+			if ( ! target ) return;
+			const contador = el.querySelector( '.tse-proxima-contador' );
+			if ( contador ) contador.textContent = formatCountdown( target - Math.floor( Date.now() / 1000 ) );
+		} );
+	}
+
     // Inicializa todos os widgets na página
     document.querySelectorAll( '.tse-apuracao-widget, .tse-card, .tse-card-secao' ).forEach( initWidget );
+	tickCountdowns();
+	setInterval( tickCountdowns, 1000 );
 } )();

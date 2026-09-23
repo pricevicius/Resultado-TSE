@@ -7,6 +7,8 @@ final class AE_TSE_Source_Not_Found extends RuntimeException {}
 /** Transport and normalization boundary. No visitor request invokes this class. */
 final class AE_TSE_Client {
 	private static ?AE_TSE_Client $instance = null;
+	/** Same 20% headroom under the TSE's documented 100 req/s cap as the sequential throttle() below, enforced across a whole concurrent batch instead of one request at a time. */
+	private const MAX_REQUESTS_PER_SECOND = 20;
 	public static function instance(): AE_TSE_Client { return self::$instance ??= new self(); }
 
 	public function import_candidates_page( array $payload, array $cursor, int $job_id ): array {
@@ -55,6 +57,53 @@ final class AE_TSE_Client {
 		if ( null === $raw ) { return array( 'complete' => true, 'unchanged' => true ); }
 		$normalized = $this->normalize_result( $raw, $kind );
 		if ( ! $this->is_valid_result( $raw, $normalized, $kind ) ) { throw new RuntimeException( 'Snapshot rejeitado: estrutura essencial do TSE ausente.' ); }
+		return $this->persist_result( $contest_id, $kind, $url, $raw, $normalized );
+	}
+
+	/**
+	 * Concurrent counterpart to collect_results(): fetches every payload's URL in one
+	 * curl_multi batch (bounded rate, see fetch_json_batch()) instead of one HTTP round
+	 * trip at a time, then runs the same validation/persistence as the single-job path.
+	 * @param array<int|string,array<string,mixed>> $payloads_by_job_id
+	 * @return array<int|string,array<string,mixed>|Throwable>
+	 */
+	public function collect_results_many( array $payloads_by_job_id ): array {
+		$results = array(); $meta = array(); $to_fetch = array();
+		foreach ( $payloads_by_job_id as $job_id => $payload ) {
+			try {
+				$contest_id = absint( $payload['contest_id'] ?? 0 ); $url = esc_url_raw( $payload['source_url'] ?? '' ); $kind = strtoupper( sanitize_key( $payload['kind'] ?? 'EA20' ) );
+				if ( ! $contest_id || ! in_array( $kind, array( 'EA14', 'EA15', 'EA20' ), true ) || ! $this->allowed_url( $url ) ) { throw new RuntimeException( 'Coleta TSE invalida.' ); }
+				if ( ! $this->result_source_is_current( $contest_id, $url ) ) {
+					AE_Logger::write( 'info', 'stale_result_job_ignored', array( 'contest_id' => $contest_id, 'source_url' => $url ) );
+					$results[ $job_id ] = array( 'complete' => true, 'source_ignored' => true );
+					continue;
+				}
+				$meta[ $job_id ] = array( 'contest_id' => $contest_id, 'kind' => $kind, 'url' => $url );
+				$to_fetch[ $job_id ] = $url;
+			} catch ( Throwable $e ) { $results[ $job_id ] = $e; }
+		}
+		if ( ! $to_fetch ) { return $results; }
+		$fetched = $this->fetch_json_batch( $to_fetch );
+		foreach ( $meta as $job_id => $m ) {
+			$outcome = $fetched[ $job_id ] ?? new RuntimeException( 'Resultado do lote ausente para o job.' );
+			try {
+				if ( $outcome instanceof AE_TSE_Source_Not_Found ) {
+					$this->defer_missing_result_source( $m['contest_id'], $m['url'] );
+					$results[ $job_id ] = array( 'complete' => true, 'source_deferred' => true );
+					continue;
+				}
+				if ( $outcome instanceof Throwable ) { throw $outcome; }
+				$this->mark_result_source_checked( $m['contest_id'], $m['url'] );
+				if ( null === $outcome ) { $results[ $job_id ] = array( 'complete' => true, 'unchanged' => true ); continue; }
+				$normalized = $this->normalize_result( $outcome, $m['kind'] );
+				if ( ! $this->is_valid_result( $outcome, $normalized, $m['kind'] ) ) { throw new RuntimeException( 'Snapshot rejeitado: estrutura essencial do TSE ausente.' ); }
+				$results[ $job_id ] = $this->persist_result( $m['contest_id'], $m['kind'], $m['url'], $outcome, $normalized );
+			} catch ( Throwable $e ) { $results[ $job_id ] = $e; }
+		}
+		return $results;
+	}
+
+	private function persist_result( int $contest_id, string $kind, string $url, array $raw, array $normalized ): array {
 		global $wpdb; $p = $wpdb->prefix . 'ae_'; $now = current_time( 'mysql', true );
 		$sha = hash( 'sha256', wp_json_encode( $raw ) );
 		$previous = $wpdb->get_var( $wpdb->prepare( "SELECT source_sha256 FROM {$p}snapshots WHERE contest_id=%d AND status='valid' ORDER BY id DESC LIMIT 1", $contest_id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
@@ -69,6 +118,89 @@ final class AE_TSE_Client {
 		AE_Results::instance()->invalidate( $snapshot_id );
 		AE_Logger::write( 'info', 'snapshot_valid', array( 'contest_id' => $contest_id, 'snapshot_id' => $snapshot_id, 'sha256' => $sha ) );
 		return array( 'complete' => true );
+	}
+
+	/**
+	 * Fires every URL concurrently via curl_multi, then pads the batch's wall time so the
+	 * aggregate rate never exceeds self::MAX_REQUESTS_PER_SECOND — even if every response
+	 * comes back instantly (e.g. all 304s). This is what keeps concurrency inside the same
+	 * TSE-facing rate ceiling that throttle() enforces for the single-request path.
+	 * @param array<int|string,string> $urls_by_key
+	 * @return array<int|string,array<string,mixed>|null|Throwable> null means HTTP 304.
+	 */
+	private function fetch_json_batch( array $urls_by_key ): array {
+		$results = array();
+		$blocked_until = absint( get_option( 'ae_tse_blocked_until', 0 ) );
+		if ( $blocked_until > time() ) {
+			$error = new RuntimeException( 'Coleta pausada preventivamente até ' . gmdate( 'H:i:s', $blocked_until ) . ' UTC.' );
+			foreach ( $urls_by_key as $key => $url ) { $results[ $key ] = $error; }
+			return $results;
+		}
+		foreach ( $urls_by_key as $key => $url ) {
+			if ( ! $this->allowed_url( $url ) ) { $results[ $key ] = new RuntimeException( 'URL fora dos domínios oficiais do TSE.' ); unset( $urls_by_key[ $key ] ); }
+		}
+		if ( ! $urls_by_key ) { return $results; }
+		if ( ! function_exists( 'curl_multi_init' ) ) {
+			// No curl extension: degrade to the sequential, already-throttled single path rather than fatal-erroring the whole collection.
+			foreach ( $urls_by_key as $key => $url ) {
+				try { $results[ $key ] = $this->fetch_json( $url, true ); } catch ( Throwable $e ) { $results[ $key ] = $e; }
+			}
+			return $results;
+		}
+		$started_at = microtime( true );
+		$multi = curl_multi_init();
+		$handles = array(); $headers_raw = array();
+		foreach ( $urls_by_key as $key => $url ) {
+			$state = get_option( 'ae_tse_http_' . md5( $url ), array() );
+			$request_headers = array( 'Accept: application/json', 'User-Agent: WordPress Apuracao Eleitoral/' . AE_VERSION );
+			if ( ! empty( $state['etag'] ) ) { $request_headers[] = 'If-None-Match: ' . $state['etag']; }
+			if ( ! empty( $state['last_modified'] ) ) { $request_headers[] = 'If-Modified-Since: ' . $state['last_modified']; }
+			$headers_raw[ $key ] = array();
+			$ch = curl_init( $url );
+			curl_setopt_array( $ch, array(
+				CURLOPT_RETURNTRANSFER => true,
+				CURLOPT_FOLLOWLOCATION => true,
+				CURLOPT_MAXREDIRS => 2,
+				CURLOPT_TIMEOUT => 20,
+				CURLOPT_HTTPHEADER => $request_headers,
+				CURLOPT_HEADERFUNCTION => function ( $handle, $line ) use ( $key, &$headers_raw ) {
+					$headers_raw[ $key ][] = $line;
+					return strlen( $line );
+				},
+			) );
+			curl_multi_add_handle( $multi, $ch );
+			$handles[ $key ] = $ch;
+		}
+		do {
+			$status = curl_multi_exec( $multi, $running );
+			if ( $running ) { curl_multi_select( $multi ); }
+		} while ( $running > 0 && CURLM_OK === $status );
+		foreach ( $handles as $key => $ch ) {
+			$errno = curl_errno( $ch );
+			$results[ $key ] = $errno ? new RuntimeException( curl_error( $ch ) ) : $this->interpret_batch_response( $urls_by_key[ $key ], (int) curl_getinfo( $ch, CURLINFO_HTTP_CODE ), (string) curl_multi_getcontent( $ch ), $headers_raw[ $key ] );
+			curl_multi_remove_handle( $multi, $ch );
+			curl_close( $ch );
+		}
+		curl_multi_close( $multi );
+		$min_elapsed = count( $urls_by_key ) / self::MAX_REQUESTS_PER_SECOND;
+		$elapsed = microtime( true ) - $started_at;
+		if ( $elapsed < $min_elapsed ) { usleep( (int) ceil( ( $min_elapsed - $elapsed ) * 1000000 ) ); }
+		return $results;
+	}
+
+	/** @return array<string,mixed>|null|Throwable */
+	private function interpret_batch_response( string $url, int $code, string $body, array $header_lines ) {
+		if ( 304 === $code ) { return null; }
+		if ( 404 === $code ) { return new AE_TSE_Source_Not_Found( 'O TSE não publicou este arquivo de resultado.' ); }
+		if ( in_array( $code, array( 403, 429 ), true ) ) { update_option( 'ae_tse_blocked_until', time() + 10 * MINUTE_IN_SECONDS, false ); return new RuntimeException( 'TSE respondeu HTTP ' . $code . '.' ); }
+		if ( 200 !== $code ) { return new RuntimeException( 'TSE respondeu HTTP ' . $code . '; novas tentativas foram desaceleradas.' ); }
+		$etag = null; $last_modified = null;
+		foreach ( $header_lines as $line ) {
+			if ( 0 === stripos( $line, 'etag:' ) ) { $etag = trim( substr( $line, 5 ) ); }
+			if ( 0 === stripos( $line, 'last-modified:' ) ) { $last_modified = trim( substr( $line, 14 ) ); }
+		}
+		update_option( 'ae_tse_http_' . md5( $url ), array( 'etag' => $etag, 'last_modified' => $last_modified ), false );
+		try { $data = json_decode( $body, true, 512, JSON_THROW_ON_ERROR ); return is_array( $data ) ? $data : new RuntimeException( 'JSON TSE sem objeto raiz.' ); } catch ( JsonException $e ) { return new RuntimeException( 'JSON TSE inválido.' ); }
 	}
 
 	private function normalize_result( array $raw, string $kind ): array {
