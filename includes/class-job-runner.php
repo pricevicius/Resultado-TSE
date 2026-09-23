@@ -130,8 +130,9 @@ final class AE_Job_Runner {
 			$interval = max( 30, min( 900, absint( $collection['interval'] ?? 60 ) ) );
 			$last = $wpdb->get_var( $wpdb->prepare( "SELECT MAX(captured_at) FROM {$p}snapshots WHERE contest_id=%d AND status='valid'", $contest->id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			if ( $last && strtotime( $last . ' UTC' ) > time() - $interval ) { continue; }
-			$needle = '%"contest_id":' . (int) $contest->id . '%';
-			$pending = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$p}jobs WHERE type='collect_results' AND state IN ('queued','running','retry') AND payload_json LIKE %s LIMIT 1", $needle ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			// The trailing "," or "}" stops "contest_id":1 from matching 10, 11, 100... which silently starves low-numbered contests forever.
+			$id = (int) $contest->id;
+			$pending = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$p}jobs WHERE type='collect_results' AND state IN ('queued','running','retry') AND (payload_json LIKE %s OR payload_json LIKE %s) LIMIT 1", '%"contest_id":' . $id . ',%', '%"contest_id":' . $id . '}%' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			if ( $pending ) { continue; }
 			self::enqueue( 'collect_results', array( 'contest_id' => (int) $contest->id, 'kind' => strtoupper( sanitize_key( $collection['kind'] ?? 'EA20' ) ), 'source_url' => esc_url_raw( $collection['source_url'] ) ) );
 		}
