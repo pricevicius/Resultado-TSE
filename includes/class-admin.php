@@ -60,23 +60,47 @@ final class AE_Admin {
 	private function tab_selecao(): void {
 		global $wpdb; $p = $wpdb->prefix . 'ae_';
 		$contests = $wpdb->get_results( "SELECT c.id,c.position_name,c.scope_name,c.round_no,c.config_json,(SELECT MAX(captured_at) FROM {$p}snapshots s WHERE s.contest_id=c.id AND s.status='valid') latest FROM {$p}contests c WHERE c.active=1 ORDER BY c.position_name,c.scope_name,c.round_no" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$groups = array();
+		foreach ( $contests as $c ) { $groups[ $c->position_name ][] = $c; }
 		?><section class="ae-panel">
-		<div class="notice notice-warning inline" style="border-left:4px solid #d63638;padding:1px 12px;margin:0 0 16px;"><p><strong>Atenção:</strong> disputas <u>desmarcadas</u> abaixo <strong>não são sincronizadas com o TSE</strong> — ficam paradas no último dado coletado (ou nunca chegam a ter um), mesmo que apareçam publicadas em algum shortcode ou bloco do site. Marque aqui exatamente as disputas que estão de fato exibidas nas páginas, para que a coleta automática se concentre nelas.</p></div>
+		<div class="notice notice-warning inline" style="border-left:4px solid #d63638;padding:1px 12px;margin:0 0 16px;"><p><strong>Atenção:</strong> disputas <u>desmarcadas</u> abaixo <strong>não são sincronizadas com o TSE</strong> — ficam paradas no último dado coletado (ou nunca chegam a ter um), mesmo que apareçam publicadas em algum shortcode ou bloco do site. Marque só o que está de fato publicado.</p></div>
 		<h2>Seleção de disputas para sincronização automática</h2>
-		<p class="description">Sincronizar com o TSE (aba Configuração) recria esta lista, mas preserva o que você marcar/desmarcar aqui — só volta a marcar tudo se a disputa for nova.</p>
+		<p class="description">Agrupado por cargo, tudo fechado por padrão. Sincronizar com o TSE (aba Configuração) recria esta lista, mas preserva o que você marcar/desmarcar aqui — só volta a marcar tudo se a disputa for nova.</p>
+		<p><input type="search" id="ae-selecao-busca" class="regular-text" placeholder="Buscar por cargo ou abrangência (ex.: Espírito Santo)"></p>
 		<form action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="post">
 		<?php wp_nonce_field( 'ae_save_sync_selection' ); ?>
 		<input type="hidden" name="action" value="ae_save_sync_selection">
-		<p><button type="button" class="button" onclick="document.querySelectorAll('.ae-sync-check').forEach(function(c){c.checked=true;})">Marcar todas</button> <button type="button" class="button" onclick="document.querySelectorAll('.ae-sync-check').forEach(function(c){c.checked=false;})">Desmarcar todas</button></p>
-		<table class="widefat striped"><thead><tr><th>Sincronizar</th><th>Cargo</th><th>Abrangência</th><th>Turno</th><th>Último snapshot (UTC)</th></tr></thead><tbody>
-		<?php foreach ( $contests as $c ) :
-			$config = json_decode( (string) $c->config_json, true );
-			$enabled = ! isset( $config['collection']['enabled'] ) || $config['collection']['enabled'];
-			?><tr><td><label><input class="ae-sync-check" type="checkbox" name="enabled[<?php echo esc_attr( (string) $c->id ); ?>]" value="1" <?php checked( $enabled ); ?>><input type="hidden" name="contest_ids[]" value="<?php echo esc_attr( (string) $c->id ); ?>"></label></td><td><?php echo esc_html( $c->position_name ); ?></td><td><?php echo esc_html( $c->scope_name ); ?></td><td><?php echo esc_html( (string) $c->round_no ); ?>º</td><td><?php echo esc_html( $c->latest ?: '—' ); ?></td></tr>
-		<?php endforeach; if ( ! $contests ) : ?><tr><td colspan="5">Nenhuma disputa sincronizada ainda. Sincronize com o TSE na aba Configuração primeiro.</td></tr><?php endif; ?>
-		</tbody></table>
+		<?php foreach ( $groups as $position_name => $rows ) :
+			$enabled_count = 0;
+			foreach ( $rows as $c ) { $config = json_decode( (string) $c->config_json, true ); if ( ! isset( $config['collection']['enabled'] ) || $config['collection']['enabled'] ) { $enabled_count++; } }
+			?><details class="ae-selecao-grupo"><summary><strong><?php echo esc_html( $position_name ); ?></strong> — <?php echo esc_html( (string) $enabled_count ); ?> de <?php echo esc_html( (string) count( $rows ) ); ?> sincronizando</summary>
+			<p><button type="button" class="button button-small ae-marcar" onclick="this.closest('details').querySelectorAll('.ae-sync-check').forEach(function(c){c.checked=true;})">Marcar todas do grupo</button> <button type="button" class="button button-small" onclick="this.closest('details').querySelectorAll('.ae-sync-check').forEach(function(c){c.checked=false;})">Desmarcar todas do grupo</button></p>
+			<table class="widefat striped"><thead><tr><th>Sincronizar</th><th>Disputa</th><th>Último snapshot (UTC)</th></tr></thead><tbody>
+			<?php foreach ( $rows as $c ) :
+				$config = json_decode( (string) $c->config_json, true );
+				$enabled = ! isset( $config['collection']['enabled'] ) || $config['collection']['enabled'];
+				?><tr class="ae-selecao-linha" data-busca="<?php echo esc_attr( mb_strtolower( $position_name . ' ' . $c->scope_name ) ); ?>"><td><label><input class="ae-sync-check" type="checkbox" name="enabled[<?php echo esc_attr( (string) $c->id ); ?>]" value="1" <?php checked( $enabled ); ?>><input type="hidden" name="contest_ids[]" value="<?php echo esc_attr( (string) $c->id ); ?>"></label></td><td><?php echo esc_html( $c->scope_name . ' · ' . $c->round_no . 'º turno' ); ?></td><td><?php echo esc_html( $c->latest ?: '—' ); ?></td></tr>
+			<?php endforeach; ?>
+			</tbody></table>
+			</details>
+		<?php endforeach; if ( ! $contests ) : ?><p>Nenhuma disputa sincronizada ainda. Sincronize com o TSE na aba Configuração primeiro.</p><?php endif; ?>
 		<p><button class="button button-primary button-hero">Salvar seleção</button></p>
 		</form>
+		<script>
+		document.getElementById('ae-selecao-busca').addEventListener('input', function () {
+			var termo = this.value.trim().toLowerCase();
+			document.querySelectorAll('.ae-selecao-grupo').forEach(function (grupo) {
+				var temMatch = false;
+				grupo.querySelectorAll('.ae-selecao-linha').forEach(function (linha) {
+					var bate = !termo || linha.dataset.busca.indexOf(termo) !== -1;
+					linha.style.display = bate ? '' : 'none';
+					if (bate) temMatch = true;
+				});
+				grupo.style.display = temMatch ? '' : 'none';
+				if (termo && temMatch) { grupo.open = true; }
+			});
+		});
+		</script>
 		</section><?php
 	}
 
