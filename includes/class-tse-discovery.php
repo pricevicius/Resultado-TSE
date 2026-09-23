@@ -78,10 +78,15 @@ final class AE_TSE_Discovery {
 				if ( ! $scope_code || ! self::supports_position( $position_code ) ) { continue; }
 				foreach ( self::contest_scopes( $scope_code, $position_code ) as $contest_scope ) {
 					$source_url = self::result_url( $environment, $cycle, $tse_code, $contest_scope, $position_code, $files );
-					$contest_config = array( 'collection' => array( 'source_url' => $source_url, 'kind' => 'EA20', 'interval' => 60, 'enabled' => true, 'managed' => true ) );
+					$external = $tse_code . '-r' . $round . '-' . $position_code . '-' . strtoupper( $contest_scope );
+					// Preserva a escolha manual do admin (aba "Seleção de disputas"): um re-sync so
+					// deve tocar em source_url/kind/interval, nunca reativar algo que foi desmarcado.
+					$existing_config_json = $wpdb->get_var( $wpdb->prepare( "SELECT config_json FROM {$p}contests WHERE election_id=%d AND external_id=%s", $id, $external ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					$existing_config = json_decode( (string) $existing_config_json, true );
+					$enabled = isset( $existing_config['collection']['enabled'] ) ? (bool) $existing_config['collection']['enabled'] : true;
+					$contest_config = array( 'collection' => array( 'source_url' => $source_url, 'kind' => 'EA20', 'interval' => 60, 'enabled' => $enabled, 'managed' => true ) );
 					// EA11 nao informa vagas; Senado renova por tercos alternados e 2026 elege 1 vaga por UF (2022 elegeu 2).
 					$seats = 1;
-					$external = $tse_code . '-r' . $round . '-' . $position_code . '-' . strtoupper( $contest_scope );
 					$scope_type = 'br' === $contest_scope ? 'BR' : 'UF';
 					$scope_name = 'br' === $contest_scope ? 'Brasil' : ( self::UFS[ $contest_scope ] ?? strtoupper( $contest_scope ) );
 					$sql = $wpdb->prepare( "INSERT INTO {$p}contests (election_id,external_id,round_no,position_code,position_name,scope_type,scope_code,scope_name,seats,active,config_json) VALUES (%d,%s,%d,%s,%s,%s,%s,%s,%d,1,%s) ON DUPLICATE KEY UPDATE position_name=VALUES(position_name),seats=VALUES(seats),active=1,config_json=VALUES(config_json)", $id, $external, $round, $position_code, sanitize_text_field( $position['ds'] ?? $position_code ), $scope_type, strtoupper( $contest_scope ), $scope_name, $seats, wp_json_encode( $contest_config ) );

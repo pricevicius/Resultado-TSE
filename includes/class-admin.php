@@ -9,7 +9,7 @@ final class AE_Admin {
 	public function register(): void {
 		add_action( 'admin_menu', array( $this, 'menu' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'assets' ) );
-		foreach ( array( 'sync_tse', 'quick_setup', 'save_contest', 'start_import', 'retry_job', 'run_jobs' ) as $action ) { add_action( 'admin_post_ae_' . $action, array( $this, $action ) ); }
+		foreach ( array( 'sync_tse', 'quick_setup', 'save_contest', 'start_import', 'retry_job', 'run_jobs', 'save_sync_selection' ) as $action ) { add_action( 'admin_post_ae_' . $action, array( $this, $action ) ); }
 		add_action( 'wp_ajax_ae_admin_status', array( $this, 'ajax_status' ) );
 	}
 
@@ -23,8 +23,8 @@ final class AE_Admin {
 
 	public function page(): void {
 		$this->guard(); $tab = sanitize_key( $_GET['tab'] ?? 'overview' ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		if ( ! in_array( $tab, array( 'overview', 'setup', 'import', 'jobs', 'logs' ), true ) ) { $tab = 'overview'; }
-		?><div class="wrap ae-admin"><div class="ae-title"><div><h1>Apuração Eleitoral</h1><p>Configure, importe e acompanhe a apuração sem sair do WordPress.</p></div><span class="ae-version">v<?php echo esc_html( AE_VERSION ); ?></span></div><?php $this->notice(); ?><nav class="nav-tab-wrapper"><?php foreach ( array( 'overview'=>'Visão geral', 'setup'=>'Configuração', 'import'=>'Importar e coletar', 'jobs'=>'Fila e progresso', 'logs'=>'Logs' ) as $key=>$label ) : ?><a class="nav-tab <?php echo $tab === $key ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( $this->url( $key ) ); ?>"><?php echo esc_html( $label ); ?></a><?php endforeach; ?></nav><?php call_user_func( array( $this, 'tab_' . $tab ) ); ?></div><?php
+		if ( ! in_array( $tab, array( 'overview', 'setup', 'selecao', 'import', 'jobs', 'logs' ), true ) ) { $tab = 'overview'; }
+		?><div class="wrap ae-admin"><div class="ae-title"><div><h1>Apuração Eleitoral</h1><p>Configure, importe e acompanhe a apuração sem sair do WordPress.</p></div><span class="ae-version">v<?php echo esc_html( AE_VERSION ); ?></span></div><?php $this->notice(); ?><nav class="nav-tab-wrapper"><?php foreach ( array( 'overview'=>'Visão geral', 'setup'=>'Configuração', 'selecao'=>'Seleção de disputas', 'import'=>'Importar e coletar', 'jobs'=>'Fila e progresso', 'logs'=>'Logs' ) as $key=>$label ) : ?><a class="nav-tab <?php echo $tab === $key ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( $this->url( $key ) ); ?>"><?php echo esc_html( $label ); ?></a><?php endforeach; ?></nav><?php call_user_func( array( $this, 'tab_' . $tab ) ); ?></div><?php
 	}
 
 	private function tab_overview(): void {
@@ -57,6 +57,29 @@ final class AE_Admin {
 		</section><?php
 	}
 
+	private function tab_selecao(): void {
+		global $wpdb; $p = $wpdb->prefix . 'ae_';
+		$contests = $wpdb->get_results( "SELECT c.id,c.position_name,c.scope_name,c.round_no,c.config_json,(SELECT MAX(captured_at) FROM {$p}snapshots s WHERE s.contest_id=c.id AND s.status='valid') latest FROM {$p}contests c WHERE c.active=1 ORDER BY c.position_name,c.scope_name,c.round_no" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		?><section class="ae-panel">
+		<div class="notice notice-warning inline" style="border-left:4px solid #d63638;padding:1px 12px;margin:0 0 16px;"><p><strong>Atenção:</strong> disputas <u>desmarcadas</u> abaixo <strong>não são sincronizadas com o TSE</strong> — ficam paradas no último dado coletado (ou nunca chegam a ter um), mesmo que apareçam publicadas em algum shortcode ou bloco do site. Marque aqui exatamente as disputas que estão de fato exibidas nas páginas, para que a coleta automática se concentre nelas.</p></div>
+		<h2>Seleção de disputas para sincronização automática</h2>
+		<p class="description">Sincronizar com o TSE (aba Configuração) recria esta lista, mas preserva o que você marcar/desmarcar aqui — só volta a marcar tudo se a disputa for nova.</p>
+		<form action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="post">
+		<?php wp_nonce_field( 'ae_save_sync_selection' ); ?>
+		<input type="hidden" name="action" value="ae_save_sync_selection">
+		<p><button type="button" class="button" onclick="document.querySelectorAll('.ae-sync-check').forEach(function(c){c.checked=true;})">Marcar todas</button> <button type="button" class="button" onclick="document.querySelectorAll('.ae-sync-check').forEach(function(c){c.checked=false;})">Desmarcar todas</button></p>
+		<table class="widefat striped"><thead><tr><th>Sincronizar</th><th>Cargo</th><th>Abrangência</th><th>Turno</th><th>Último snapshot (UTC)</th></tr></thead><tbody>
+		<?php foreach ( $contests as $c ) :
+			$config = json_decode( (string) $c->config_json, true );
+			$enabled = ! isset( $config['collection']['enabled'] ) || $config['collection']['enabled'];
+			?><tr><td><label><input class="ae-sync-check" type="checkbox" name="enabled[<?php echo esc_attr( (string) $c->id ); ?>]" value="1" <?php checked( $enabled ); ?>><input type="hidden" name="contest_ids[]" value="<?php echo esc_attr( (string) $c->id ); ?>"></label></td><td><?php echo esc_html( $c->position_name ); ?></td><td><?php echo esc_html( $c->scope_name ); ?></td><td><?php echo esc_html( (string) $c->round_no ); ?>º</td><td><?php echo esc_html( $c->latest ?: '—' ); ?></td></tr>
+		<?php endforeach; if ( ! $contests ) : ?><tr><td colspan="5">Nenhuma disputa sincronizada ainda. Sincronize com o TSE na aba Configuração primeiro.</td></tr><?php endif; ?>
+		</tbody></table>
+		<p><button class="button button-primary button-hero">Salvar seleção</button></p>
+		</form>
+		</section><?php
+	}
+
 	private function tab_import(): void {
 		global $wpdb; $p=$wpdb->prefix.'ae_'; $elections=$this->elections(); $contests=$wpdb->get_results("SELECT c.*,e.name election_name FROM {$p}contests c INNER JOIN {$p}elections e ON e.id=c.election_id WHERE c.active=1 ORDER BY e.year DESC,c.round_no,c.position_name,c.scope_code"); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		?><div class="ae-grid ae-two"><section class="ae-panel"><h2>1. Importar candidatos</h2><p>O plugin baixa o pacote “Candidatos” do portal de Dados Abertos do TSE e processa o CSV em lotes.</p><form action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post"><?php wp_nonce_field('ae_start_import'); ?><input type="hidden" name="action" value="ae_start_import"><?php $this->election_select('election_id',$elections); ?><button class="button button-primary button-hero">Buscar e importar candidatos</button><p class="description">Fonte gerenciada pelo plugin; nenhuma URL precisa ser informada.</p></form></section>
@@ -77,6 +100,23 @@ final class AE_Admin {
 	}
 	private function tab_logs(): void { global $wpdb; $table=$wpdb->prefix.'ae_logs'; $logs=$wpdb->get_results("SELECT * FROM {$table} ORDER BY id DESC LIMIT 100"); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		?><section class="ae-panel"><h2>Últimos eventos</h2><table class="widefat striped"><thead><tr><th>Data UTC</th><th>Nível</th><th>Evento</th><th>Contexto</th></tr></thead><tbody><?php foreach($logs as $log): ?><tr><td><?php echo esc_html($log->created_at); ?></td><td><span class="ae-status is-<?php echo esc_attr($log->level); ?>"><?php echo esc_html(strtoupper($log->level)); ?></span></td><td><code><?php echo esc_html($log->event); ?></code></td><td><details><summary>Ver detalhes</summary><pre><?php echo esc_html($log->context_json?:'{}'); ?></pre></details></td></tr><?php endforeach; if(!$logs): ?><tr><td colspan="4">Nenhum evento registrado.</td></tr><?php endif; ?></tbody></table></section><?php }
+
+	public function save_sync_selection(): void {
+		$this->verify( 'ae_save_sync_selection' );
+		global $wpdb; $p = $wpdb->prefix . 'ae_';
+		$ids = array_map( 'absint', (array) ( $_POST['contest_ids'] ?? array() ) );
+		$enabled_ids = array_map( 'absint', array_keys( (array) ( $_POST['enabled'] ?? array() ) ) );
+		foreach ( $ids as $id ) {
+			$config_json = $wpdb->get_var( $wpdb->prepare( "SELECT config_json FROM {$p}contests WHERE id=%d", $id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$config = json_decode( (string) $config_json, true );
+			if ( ! is_array( $config ) ) { $config = array(); }
+			$config['collection'] = is_array( $config['collection'] ?? null ) ? $config['collection'] : array();
+			$config['collection']['enabled'] = in_array( $id, $enabled_ids, true );
+			$wpdb->update( $p . 'contests', array( 'config_json' => wp_json_encode( $config ) ), array( 'id' => $id ) );
+		}
+		AE_Logger::write( 'info', 'sync_selection_saved', array( 'total' => count( $ids ), 'enabled' => count( $enabled_ids ) ) );
+		$this->redirect( 'selecao', 'Seleção salva: ' . count( $enabled_ids ) . ' de ' . count( $ids ) . ' disputas sincronizando automaticamente.' );
+	}
 
 	public function sync_tse(): void {
 		$this->verify( 'ae_sync_tse' );
