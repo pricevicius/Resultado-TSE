@@ -64,6 +64,12 @@ class TSE_Shortcode {
     }
 
     public static function rest_resultado( WP_REST_Request $request ): WP_REST_Response {
+		// Este e o endpoint que tse-live.js realmente fica consultando enquanto alguem
+		// acompanha a apuracao — e aqui, nao em apuracao/v1/results, que o kick() precisa
+		// estar para de fato andar puxado pelo trafego de visitantes.
+		add_action( 'shutdown', static function (): void {
+			try { AE_Job_Runner::instance()->kick(); } catch ( Throwable $e ) { /* Best-effort; the scheduled tick still covers this. */ }
+		} );
         $cargo  = $request->get_param( 'cargo' );
         $uf     = $request->get_param( 'uf' );
         $limite = $request->get_param( 'limite' );
@@ -229,6 +235,15 @@ class TSE_Shortcode {
 		$captured_timestamp = $captured_at ? strtotime( $captured_at ) : false;
 		$checked_at = (string) get_option( 'ae_result_checked_' . (int) ( $data['contest']['id'] ?? 0 ), '' );
 		$checked_timestamp = $checked_at ? strtotime( $checked_at ) : false;
+		$is_final = 'final' === ( $totals['progress'] ?? '' );
+		$proxima_ts = null;
+		if ( ! $is_final ) {
+			global $wpdb;
+			$config_json = $wpdb->get_var( $wpdb->prepare( "SELECT config_json FROM {$wpdb->prefix}ae_contests WHERE id=%d", (int) ( $data['contest']['id'] ?? 0 ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$config = json_decode( (string) $config_json, true );
+			$interval = max( 30, min( 900, absint( $config['collection']['interval'] ?? 60 ) ) );
+			$proxima_ts = ( $checked_timestamp ?: $captured_timestamp ?: time() ) + $interval;
+		}
         $candidates = array_map( static function ( array $candidate ): array {
             $situacao = (string) ( $candidate['situation'] ?? '' );
             return array(
@@ -247,7 +262,11 @@ class TSE_Shortcode {
         }, $data['candidates'] );
         return array(
 			'atualizado_em' => $data['snapshot']['captured_at'],
+			// Exibido ao visitante: convertido pro fuso do site (o ISO acima e so pro atributo datetime).
+			'atualizado_em_local' => $captured_timestamp ? wp_date( 'd/m/Y H:i', $captured_timestamp ) : null,
 			'consultado_em' => $checked_at ?: null,
+			// Estimativa de quando a proxima coleta deve rodar (agora + intervalo configurado); null quando a disputa ja totalizou.
+			'proxima_atualizacao_ts' => $proxima_ts,
             'horario' => $data['snapshot']['generated_at'] ?? '',
 			'status' => ( $totals['progress'] ?? '' ) === 'final' ? 'Totalizado' : ( ( $totals['progress'] ?? '' ) === 'not_started' ? 'Aguardando apuração' : 'Parcial' ),
             'pct_apurado' => $pct,

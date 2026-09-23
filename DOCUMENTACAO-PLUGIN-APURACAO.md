@@ -4,7 +4,7 @@
 
 Este é o runbook técnico e funcional do plugin. Ele registra o que foi implementado, o que foi decidido e o que ainda está planejado. Toda mudança que altere fonte, contrato JSON, frequência, cache, fila, interface administrativa ou publicação deve atualizar este arquivo.
 
-Última revisão: 15/09/2026, fim de tarde (janela do 1º simulado do TSE, 15–17/09).
+Última revisão: 22/09/2026, manhã (1º dia da janela do 2º simulado do TSE, 22–24/09).
 
 ## Objetivo
 
@@ -168,6 +168,22 @@ Com `and = "f"`/`tf = "s"`, a interface exibe **Totalizado**. Cada candidato rec
 Fixtures: `ea20-zero.json`, `ea20-final.json` e `ea20-minimal.json` (precisam de um
 caso "2º turno com `cand.e = s`" adicionado como regressão do bug acima).
 
+**`and` e `tf` podem discordar entre si (descoberto ao vivo, 22/09/2026, 2º
+simulado):** a disputa de Presidente veio com `and = "n"` (`progress:
+"not_started"`, `reported_percentage: 0`) e `tf = "s"` ao mesmo tempo — o doc
+até então assumia que os dois só coexistem no cenário 100% ("Cenário 100%"
+acima). A interface do plugin **não é afetada**: `status` (Totalizado/Parcial/
+Aguardando apuração) e `atrasado` são derivados só de `totals['progress']`
+(`and`), nunca de `totals['final']` (`tf`) — ver `class-tse-shortcode.php`,
+método que monta o payload do shortcode. Porém `totals.final` é exposto cru
+no endpoint público `apuracao/v1/results` (`class-rest.php::results()`); um
+consumidor externo que confie só em `final` pode concluir "apuração encerrada"
+com 0% apurado. Não é bloqueante para o que o plugin entrega hoje — registrado
+aqui para qualquer integração externa que venha a consumir esse campo, e como
+mais um exemplo (como o "2º turno" e os votos anulados) de que o TSE publica
+combinações de campos no simulado que a documentação pública dele não
+descreve explicitamente.
+
 ## Limite de acesso e bloqueios
 
 O TSE informa 100 requisições/s por IP e bloqueio de dez minutos quando excedido. Respostas 304 contam; URLs 404 repetidas também podem causar bloqueio.
@@ -279,16 +295,40 @@ Para mapas municipais em escala nacional, a próxima fase deve:
 
 Janelas: 15–17/09/2026 e 22–24/09/2026, 9h–12h e 14h–17h (Brasília). Essas são as primeiras janelas possíveis para validação externa; não garantem uma URL antes de sua divulgação pelo TSE.
 
-1. sincronizar **Simulado** e registrar EA11, ciclo, pleito e eleições;
-2. confirmar zero inicial e `and = "n"`;
-3. comparar parcial com o portal Resultados;
-4. confirmar 100%, `and`, `tf`, `md`, eleitos/não eleitos e duas vagas de Senado;
-5. validar “2º turno” sem marcar como eleito;
-6. medir quantidade e pico de requests no IP de saída;
-7. testar 304 e indisponibilidade mantendo último snapshot;
-8. confirmar no navegador que nenhum domínio TSE é acessado;
-9. executar carga da REST local;
-10. anexar fixtures sanitizadas e registrar hash, horário, versão e aprovação.
+1. ✅ sincronizar **Simulado** e registrar EA11, ciclo, pleito e eleições —
+   validado ao vivo em 22/09/2026: ciclo `ele2026` (não mais `ele2024`), 193
+   disputas ativas criadas a partir do EA11 real;
+2. ✅ confirmar zero inicial e `and = "n"` — Presidente-BR veio zerado
+   (`reported_percentage: 0`, `reported_sections: 0`), com a ressalva do
+   `and`/`tf` divergentes registrada acima;
+3. comparar parcial com o portal Resultados — ainda não feito (requer abrir o
+   portal público em paralelo);
+4. confirmar 100%, `and`, `tf`, `md`, eleitos/não eleitos e duas vagas de
+   Senado — pendente (simulado de hoje ainda não chegou a 100% na disputa
+   testada);
+5. ✅ validar "2º turno" sem marcar como eleito — confirmado com dado real:
+   candidato com `situation: "2º turno"` veio com `elected: "0"` e
+   `segundo_turno: true` no payload da REST;
+6. medir quantidade e pico de requests no IP de saída — não medido
+   formalmente ainda; nenhum bloqueio (`ae_tse_blocked_until`) foi disparado
+   durante os testes de hoje;
+7. ✅ testar 304 — confirmado: segunda coleta da mesma disputa retornou
+   `unchanged` (condicional `If-None-Match` funcionando); indisponibilidade
+   mantendo último snapshot ainda não testada isoladamente;
+8. confirmar no navegador que nenhum domínio TSE é acessado — não testado
+   nesta rodada (testes de hoje foram via CLI/wp eval, não navegador);
+9. ✅ executar carga da REST local — rodado em 22/09/2026 com k6 (`grafana/k6`
+   via Docker, `--network host`) contra `apuracao/v1/results/tse-21270/1/0001/br`
+   (disputa real do simulado, com snapshot válido): 211.977 requisições em
+   2min20s, rampa até 200 VUs (perfil reduzido de 5min para ~2min20s em
+   relação ao `tests/load/results.js` original, só para esta rodada de
+   validação). **p95 = 179,86 ms** (meta <400 ms), **0% de erro** (meta <1%),
+   100% dos checks (`200/304` + header `Cache-Control` presente). Alvo batido
+   com folga — mas atenção: isso mede a REST do WordPress local servindo do
+   cache de snapshot já gravado, não o caminho de coleta (`AE_TSE_Client`)
+   sob carga simultânea de leitura;
+10. anexar fixtures sanitizadas e registrar hash, horário, versão e aprovação
+    — ainda não feito.
 
 Alvo inicial: p95 abaixo de 400 ms e erros abaixo de 1% com 200 usuários virtuais, ajustável à infraestrutura.
 
@@ -461,6 +501,57 @@ não) a folga estimada aqui.
 - a saúde REST informa se `ZipArchive` está disponível. A importação de CSVs em
   ZIP requer `php-zip` no ambiente.
 
+## Repositório — código movido para submódulo (22/09/2026)
+
+O plugin deixou de viver dentro dos monorepos de site. Fonte de verdade agora é
+<https://gitlab.okn.com.br/okn/custom-plugins/tse-resultado> (branch `main`),
+registrado como submódulo Git em `www/wp-content/plugins/tse-apuracao` nos
+repositórios de cada publisher (mesmo padrão já usado para `okndso`, `oknfeed`
+e o tema).
+
+Motivo: o plugin não depende de nenhuma marca/publisher específico (sem
+branding de cliente no código desde esta revisão) e passou a ser reutilizado
+em mais de um site do grupo — fazia sentido ter histórico e versionamento
+próprios, com cada site fixando o commit/branch que quiser.
+
+Consequências práticas:
+
+- qualquer alteração no plugin agora exige dois commits: um no repositório do
+  plugin, outro no monorepo do site fazendo o bump do ponteiro do submódulo
+  (`git -C www/wp-content/plugins/tse-apuracao pull` + `git add` do path no
+  monorepo). Esquecer o segundo passo é a causa clássica de "produção rodando
+  código velho";
+- `git clone` do monorepo não traz o código do plugin sozinho — é preciso
+  `git submodule update --init --recursive` (a pipeline de deploy do
+  Pernambuco, `.gitlab-ci.yml`, já faz isso automaticamente nos jobs
+  `deploy_job` — branches `release/*`, homolog — e `deploy_feature_job` —
+  branch `main`, produção; ambientes fora dessa pipeline precisam rodar
+  manualmente);
+- Pernambuco: convertido e pushado em `release/1.0.0` (commit `1823ed5e`);
+- Espírito Santo: convertido e pushado como branch separado
+  `release/1.0.0-tse-submodule` (não sobrescrito direto em cima do
+  `release/1.0.0` daquele repositório, para revisão antes do merge — não foi
+  confirmado se o `.gitlab-ci.yml` de lá também inicializa submódulos
+  automaticamente).
+
+Ajustes de portabilidade feitos junto com a extração (para o plugin poder ser
+instalado em qualquer WordPress, sem depender deste grupo):
+
+- removido `Author`/`Plugin URI` fixos ("Tribuna Online") do cabeçalho de
+  `tse-apuracao.php`;
+- `bin/tse-tick-loop.sh` parametrizado por variável de ambiente
+  (`TSE_APURACAO_CONTAINER`, `TSE_APURACAO_PLUGIN_PATH`,
+  `TSE_APURACAO_LOG_FILE`) em vez de nome de container Docker e caminho de
+  log fixos de uma instalação específica;
+- `bin/tse-tick.php` agora recusa execução fora de CLI (fechava um endpoint
+  HTTP anônimo, já que `wp-content/plugins/...` costuma ser publicamente
+  acessível) e `bin/` ganhou `index.php` silenciador;
+- documentação sem caminhos absolutos de uma instalação de desenvolvimento
+  específica;
+- corrigida a descrição do circuit breaker: 404 usa backoff por fonte, não
+  bloqueio global de 10 min (o texto antigo estava desalinhado com o que o
+  código faz desde a v2.3.0, ver "Autonomia operacional" acima).
+
 ## Histórico desta rodada
 
 - painel visual e fluxo de jobs;
@@ -479,4 +570,14 @@ não) a folga estimada aqui.
   decisão de retomar cache (Cloudflare) depois do 2º simulado;
 - próximo: sincronizar fixes com homolog/produção, cron real fora do Docker
   local, `Cache-Control` em `tse/v1/resultado`, teste de carga, 2º simulado
-  (22–24/09), só então declarar homologado.
+  (22–24/09), só então declarar homologado;
+- **22/09/2026:** plugin extraído para repositório próprio
+  ([tse-resultado](https://gitlab.okn.com.br/okn/custom-plugins/tse-resultado)),
+  registrado como submódulo em Pernambuco e Espírito Santo, sem branding de
+  publisher; validação ao vivo contra o TSE real (ambiente Simulado, 2º
+  simulado, 1º dia): EA11 sincronizado (`ele2026`, 193 disputas), EA20
+  coletado e normalizado para Presidente-BR, cache condicional (304)
+  confirmado, nenhum bloqueio disparado, REST pública retornando `segundo_turno`
+  corretamente; descoberta a divergência `and`/`tf` (não afeta a interface do
+  plugin, registrada acima). Itens 3, 4, 6, 8, 9 e 10 do checklist do 2º
+  simulado continuam pendentes.

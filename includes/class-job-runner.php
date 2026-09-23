@@ -5,6 +5,12 @@ final class AE_Job_Runner {
 	private static ?AE_Job_Runner $instance = null;
 	/** A MySQL named lock is shared by CLI, WP-Cron and web workers without Redis. */
 	private const LOCK_NAME = 'ae_apuracao_job_runner';
+	/** Bounded opportunistic drain triggered by real page/REST traffic, so results keep moving even when WP-Cron's own loopback never fires (common on hosts that block self-requests) without needing any server-side cron setup. */
+	private const KICK_BUDGET_SECONDS = 3;
+	private const KICK_MIN_INTERVAL = 5;
+	/** Completed/failed jobs older than this are removed so the queue table doesn't need manual cleanup. */
+	private const JOB_RETENTION_DAYS = 30;
+	private const PURGE_MIN_INTERVAL = DAY_IN_SECONDS;
 
 	public static function instance(): AE_Job_Runner { return self::$instance ??= new self(); }
 
@@ -26,15 +32,59 @@ final class AE_Job_Runner {
 			if ( absint( get_option( 'ae_tse_blocked_until', 0 ) ) > time() ) { return; }
 			$this->recover_expired_jobs();
 			$this->enqueue_due_collections();
-			$deadline = microtime( true ) + 40;
-			while ( microtime( true ) < $deadline ) {
-				// A 403/429 received during this same cycle opens the breaker immediately.
-				if ( absint( get_option( 'ae_tse_blocked_until', 0 ) ) > time() ) { break; }
-				$job = $this->claim();
-				if ( ! $job ) { break; }
-				$this->run( $job );
-			}
+			$this->maybe_purge_old_jobs();
+			$this->drain( 40 );
 		} finally { $this->release_lock(); }
+	}
+
+	/**
+	 * Opportunistic, bounded drain called from real visitor/admin requests (REST results,
+	 * admin pages). WP-Cron's scheduled event still does the full-size tick, but this gives
+	 * the queue a way to advance even on hosts where WP-Cron's self-loopback request never
+	 * fires (no crontab/DISABLE_WP_CRON change needed on any environment).
+	 */
+	public function kick(): void {
+		$last = (int) get_option( 'ae_last_kick_at', 0 );
+		if ( $last > time() - self::KICK_MIN_INTERVAL ) { return; }
+		global $wpdb;
+		$table = $wpdb->prefix . 'ae_jobs';
+		$now = current_time( 'mysql', true );
+		$pending = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$table} WHERE state IN ('queued','retry') AND run_after <= %s LIMIT 1", $now ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		if ( ! $pending ) { return; }
+		update_option( 'ae_last_kick_at', time(), false );
+		// Callers only invoke kick() from 'shutdown', once the visitor's response is already
+		// queued/sent; finish that connection now so this drain never adds request latency.
+		if ( function_exists( 'fastcgi_finish_request' ) ) { fastcgi_finish_request(); }
+		if ( ! $this->acquire_lock() ) { return; }
+		try {
+			if ( absint( get_option( 'ae_tse_blocked_until', 0 ) ) > time() ) { return; }
+			$this->drain( self::KICK_BUDGET_SECONDS );
+		} finally { $this->release_lock(); }
+	}
+
+	private function drain( int $seconds ): void {
+		$deadline = microtime( true ) + $seconds;
+		while ( microtime( true ) < $deadline ) {
+			// A 403/429 received during this same cycle opens the breaker immediately.
+			if ( absint( get_option( 'ae_tse_blocked_until', 0 ) ) > time() ) { break; }
+			$job = $this->claim();
+			if ( ! $job ) { break; }
+			$this->run( $job );
+		}
+	}
+
+	/** Keeps the jobs table from growing without bound so nobody has to purge it by hand. */
+	private function maybe_purge_old_jobs(): void {
+		$last = (int) get_option( 'ae_last_purge_at', 0 );
+		if ( $last > time() - self::PURGE_MIN_INTERVAL ) { return; }
+		update_option( 'ae_last_purge_at', time(), false );
+		global $wpdb;
+		$table = $wpdb->prefix . 'ae_jobs';
+		$cutoff = gmdate( 'Y-m-d H:i:s', time() - self::JOB_RETENTION_DAYS * DAY_IN_SECONDS );
+		$deleted = $wpdb->query( $wpdb->prepare( "DELETE FROM {$table} WHERE state IN ('completed','failed') AND updated_at < %s", $cutoff ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		if ( $deleted ) {
+			AE_Logger::write( 'info', 'old_jobs_purged', array( 'count' => (int) $deleted, 'retention_days' => self::JOB_RETENTION_DAYS ) );
+		}
 	}
 
 	/**
@@ -83,8 +133,9 @@ final class AE_Job_Runner {
 			$interval = max( 30, min( 900, absint( $collection['interval'] ?? 60 ) ) );
 			$last = $wpdb->get_var( $wpdb->prepare( "SELECT MAX(captured_at) FROM {$p}snapshots WHERE contest_id=%d AND status='valid'", $contest->id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			if ( $last && strtotime( $last . ' UTC' ) > time() - $interval ) { continue; }
-			$needle = '%"contest_id":' . (int) $contest->id . '%';
-			$pending = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$p}jobs WHERE type='collect_results' AND state IN ('queued','running','retry') AND payload_json LIKE %s LIMIT 1", $needle ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			// The trailing "," or "}" stops "contest_id":1 from matching 10, 11, 100... which silently starves low-numbered contests forever.
+			$id = (int) $contest->id;
+			$pending = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$p}jobs WHERE type='collect_results' AND state IN ('queued','running','retry') AND (payload_json LIKE %s OR payload_json LIKE %s) LIMIT 1", '%"contest_id":' . $id . ',%', '%"contest_id":' . $id . '}%' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			if ( $pending ) { continue; }
 			self::enqueue( 'collect_results', array( 'contest_id' => (int) $contest->id, 'kind' => strtoupper( sanitize_key( $collection['kind'] ?? 'EA20' ) ), 'source_url' => esc_url_raw( $collection['source_url'] ) ) );
 		}

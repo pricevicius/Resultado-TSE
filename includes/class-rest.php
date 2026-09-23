@@ -15,6 +15,10 @@ final class AE_REST {
 	}
 
 	public function results( WP_REST_Request $request ): WP_REST_Response {
+		// Runs on 'shutdown', after this response is already on the wire, so a slow job never adds latency to a visitor's request.
+		add_action( 'shutdown', static function (): void {
+			try { AE_Job_Runner::instance()->kick(); } catch ( Throwable $e ) { /* Best-effort; the scheduled tick still covers this. */ }
+		} );
 		$data = AE_Results::instance()->latest( sanitize_title( $request['election'] ), absint( $request['round'] ), sanitize_key( $request['position'] ), sanitize_key( $request['scope'] ) );
 		if ( null === $data ) { return new WP_REST_Response( array( 'code' => 'ae_contest_not_found', 'message' => 'Disputa nao encontrada.' ), 404 ); }
 		// Sinalizador explicito para consumidores externos nao precisarem interpretar o texto livre de 'situation'.

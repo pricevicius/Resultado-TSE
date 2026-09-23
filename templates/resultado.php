@@ -38,6 +38,8 @@ $pct_numero    = isset( $dados['pct_apurado_numero'] ) ? (float) $dados['pct_apu
 $dados_atrasados = ! empty( $dados['atrasado'] );
 $status        = $dados['status'] ?? '';
 $atualizado_em = $dados['atualizado_em'] ?? '';
+$atualizado_em_local = $dados['atualizado_em_local'] ?? $atualizado_em;
+$proxima_ts    = $dados['proxima_atualizacao_ts'] ?? null;
 $candidatos    = $dados['candidatos'] ?? [];
 
 // Voto máximo para escala das barras
@@ -139,8 +141,11 @@ $max_votos = max( $max_votos, 1 );
         <span class="tse-fonte">Fonte: TSE — Tribunal Superior Eleitoral</span>
         <?php if ( $atualizado_em ) : ?>
         <span class="tse-atualizado">
-            Última atualização: <time datetime="<?php echo esc_attr( $atualizado_em ); ?>" class="tse-timestamp"><?php echo esc_html( $atualizado_em ); ?></time>
+            Última atualização: <time datetime="<?php echo esc_attr( $atualizado_em ); ?>" class="tse-timestamp"><?php echo esc_html( $atualizado_em_local ); ?></time>
         </span>
+        <?php endif; ?>
+        <?php if ( $proxima_ts ) : ?>
+        <span class="tse-proxima" data-proxima="<?php echo esc_attr( (string) $proxima_ts ); ?>">Próxima atualização em <span class="tse-proxima-contador">alguns segundos</span></span>
         <?php endif; ?>
     </div>
 </div>

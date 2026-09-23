@@ -55,6 +55,10 @@ final class AE_TSE_Client {
 		if ( null === $raw ) { return array( 'complete' => true, 'unchanged' => true ); }
 		$normalized = $this->normalize_result( $raw, $kind );
 		if ( ! $this->is_valid_result( $raw, $normalized, $kind ) ) { throw new RuntimeException( 'Snapshot rejeitado: estrutura essencial do TSE ausente.' ); }
+		return $this->persist_result( $contest_id, $kind, $url, $raw, $normalized );
+	}
+
+	private function persist_result( int $contest_id, string $kind, string $url, array $raw, array $normalized ): array {
 		global $wpdb; $p = $wpdb->prefix . 'ae_'; $now = current_time( 'mysql', true );
 		$sha = hash( 'sha256', wp_json_encode( $raw ) );
 		$previous = $wpdb->get_var( $wpdb->prepare( "SELECT source_sha256 FROM {$p}snapshots WHERE contest_id=%d AND status='valid' ORDER BY id DESC LIMIT 1", $contest_id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
