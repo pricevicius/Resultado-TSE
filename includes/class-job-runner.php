@@ -11,8 +11,6 @@ final class AE_Job_Runner {
 	/** Completed/failed jobs older than this are removed so the queue table doesn't need manual cleanup. */
 	private const JOB_RETENTION_DAYS = 30;
 	private const PURGE_MIN_INTERVAL = DAY_IN_SECONDS;
-	/** Concurrent collect_results requests per cycle; paced by AE_TSE_Client to stay under its own rate ceiling regardless of this size. */
-	private const BATCH_SIZE = 10;
 
 	public static function instance(): AE_Job_Runner { return self::$instance ??= new self(); }
 
@@ -69,44 +67,9 @@ final class AE_Job_Runner {
 		while ( microtime( true ) < $deadline ) {
 			// A 403/429 received during this same cycle opens the breaker immediately.
 			if ( absint( get_option( 'ae_tse_blocked_until', 0 ) ) > time() ) { break; }
-			// collect_results is the high-volume job type (one per contest); batch it so the many
-			// TSE round trips run concurrently instead of one at a time. Everything else (candidate
-			// import, TSE sync) is low-volume/stateful and stays on the single-job path below.
-			$batch = $this->claim_batch( self::BATCH_SIZE );
-			if ( $batch ) { $this->run_batch( $batch ); continue; }
 			$job = $this->claim();
 			if ( ! $job ) { break; }
 			$this->run( $job );
-		}
-	}
-
-	/** @return object[] */
-	private function claim_batch( int $limit ): array {
-		global $wpdb;
-		$t = $wpdb->prefix . 'ae_jobs'; $now = current_time( 'mysql', true );
-		$ids = $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$t} WHERE type='collect_results' AND state IN ('queued','retry') AND run_after <= %s AND (locked_until IS NULL OR locked_until < %s) ORDER BY run_after ASC, id ASC LIMIT %d", $now, $now, $limit ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		if ( ! $ids ) { return array(); }
-		$token = wp_generate_uuid4();
-		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
-		// The runner-wide MySQL lock already guarantees a single drain() at a time, so this
-		// batch update needs no per-row CAS beyond the same state guard claim() uses.
-		$wpdb->query( $wpdb->prepare( "UPDATE {$t} SET state='running', lock_token=%s, locked_until=%s, attempts=attempts+1, updated_at=%s WHERE id IN ({$placeholders}) AND state IN ('queued','retry')", $token, gmdate( 'Y-m-d H:i:s', time() + 600 ), $now, ...$ids ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		return $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$t} WHERE id IN ({$placeholders}) AND lock_token=%s", ...array_merge( $ids, array( $token ) ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-	}
-
-	private function run_batch( array $jobs ): void {
-		$payloads = array();
-		foreach ( $jobs as $job ) {
-			try { $payloads[ (int) $job->id ] = json_decode( $job->payload_json, true, 512, JSON_THROW_ON_ERROR ); }
-			catch ( Throwable $e ) { $this->retry_or_fail( $job, $e ); }
-		}
-		if ( ! $payloads ) { return; }
-		$results = AE_TSE_Client::instance()->collect_results_many( $payloads );
-		foreach ( $jobs as $job ) {
-			if ( ! array_key_exists( (int) $job->id, $payloads ) ) { continue; } // payload decode already failed above
-			$outcome = $results[ (int) $job->id ] ?? new RuntimeException( 'Resultado do lote ausente para o job.' );
-			if ( $outcome instanceof Throwable ) { $this->retry_or_fail( $job, $outcome ); }
-			else { $this->finish( $job, $outcome ); }
 		}
 	}
 
