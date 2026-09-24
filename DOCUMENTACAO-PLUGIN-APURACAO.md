@@ -419,6 +419,22 @@ histórico de execuções.
   o teste de hoje não indicou essa necessidade (82 jobs em 40 s com fonte
   respondendo normalmente), mas vale monitorar no simulado de 22–24/09.
 
+**Confirmado em 24/09/2026, sem depender do TSE estar lento:** reabilitar de uma
+vez as 27 disputas de Deputado Federal (desabilitadas por engano na tela de
+Seleção — ver "Plano de prontidão" abaixo) sozinho já foi suficiente pra estourar
+o orçamento do worker sequencial por ~10-12 min — a fila subiu de ~33 para 106
+jobs e **82 das 108 disputas ativas passaram a "atrasado" (>3min sem checagem)**,
+incluindo disputas majoritárias que antes estavam saudáveis (ex.: Governador-ES).
+Causa: Deputado Federal tem centenas de candidatos por UF, então cada job desse
+tipo é muito mais pesado que uma majoritária simples (RJ chegou a levar 2min30s
+numa única coleta, contra ~1s de Governador/Senador). O sistema se autorrecuperou
+sozinho (fila voltou a zero atrasos, mediana 25s/pior caso 82s) sem intervenção
+manual além do fix inicial — mas confirma que **qualquer reativação em lote de
+disputas de Câmara (Deputado Federal/Estadual, 27+27=54 no total) durante a
+apuração real pode gerar alguns minutos de atraso generalizado**, não só nas
+disputas recém-reativadas. Evitar reativar grupos inteiros de uma vez fora de
+uma janela de baixo tráfego; se precisar, fazer em lotes menores.
+
 ## Plano de prontidão para a eleição
 
 Primeiro turno previsto para **04/10/2026** (primeiro domingo de outubro, regra
@@ -429,20 +445,40 @@ abaixo, em ordem de risco caso não sejam feitas:
 
 **P0 — bloqueia ir ao ar com segurança:**
 
-- sincronizar os fixes de 15/09 (2º turno marcado errado, votos anulados/
-  brancos/nulos ausentes, `seats` do Senado, CSS) com homolog **e** produção —
-  confirmado em 22/09 que o homolog ainda roda código de antes desses fixes;
+- ~~sincronizar os fixes de 15/09 com homolog~~ **confirmado em 24/09**: o
+  `deploy_job` do homolog roda `git submodule foreach ... checkout main && pull`
+  em todo push pra `release/*`, então os submódulos sempre vão pro HEAD do
+  `main` deles — homolog já está rodando o código atual (verificado: `$runoff`
+  do 2º turno e `votos_anulados`/`votos_brancos` presentes). **Falta ainda
+  produção** (`deploy_feature_job`, branch `main`, mesmo mecanismo de
+  submódulo, mas nunca verificado ao vivo);
 - migrar `tse-tick-loop.sh` para cron de sistema real em homolog e produção,
   com a variável de ambiente configurada corretamente (ver pegadinha acima) —
-  sem isso, o site entra na eleição real dependendo só do WP-Cron por tráfego,
-  reproduzindo o incidente de atraso do 1º simulado;
-- confirmar se o `.gitlab-ci.yml` do Espírito Santo também inicializa
-  submódulos automaticamente no deploy (registrado como não confirmado em
-  22/09) — se não, produção sobe com o plugin desatualizado/ausente mesmo após
-  o bump do ponteiro do submódulo estar correto no monorepo;
+  confirmado em 24/09 que o homolog **não tem esse cron instalado**
+  (`no crontab for ci_user`), rodando só no WP-Cron por tráfego; avaliado como
+  aceitável pro homolog em si (tráfego baixo, não é onde o público vê o
+  resultado), mas **produção precisa desse cron antes do dia 4**;
+- ~~confirmar se o `.gitlab-ci.yml` do Espírito Santo inicializa submódulos
+  automaticamente~~ **confirmado em 24/09**: sim, todo `deploy_job` faz
+  `submodule sync` + `update --init --recursive` + `foreach checkout main`;
 - fechar os itens 3, 4, 6, 8 e 10 do checklist do 2º simulado (linha acima) —
   hoje é o último dia com dado real do TSE disponível para testar isso antes
-  da eleição.
+  da eleição;
+- **novo (24/09):** antes de ir ao ar em homolog/produção, conferir a aba
+  **Seleção de disputas** — nesta sessão, as 27 disputas de Deputado Federal
+  (todas as UFs) mais 1 Deputado Estadual (DF) estavam com `collection.enabled
+  = false`, aparentemente desmarcadas sem querer ao testar essa tela nova
+  (feature de 23/09). Ficaram travadas no snapshot de véspera sem nenhum erro
+  visível — só percebido porque o "Última atualização" na tela não mudava.
+  Reativar tudo de uma vez também expôs um efeito colateral: por ~10-12min, 82
+  das 108 disputas ativas (inclusive majoritárias saudáveis, tipo
+  Governador-ES) ficaram "atrasado" porque Deputado Federal tem centenas de
+  candidatos por UF e cada job desse tipo é bem mais pesado que uma
+  majoritária (RJ chegou a 2min30s numa única coleta) — o worker sequencial
+  não aguentou a rajada de 27 jobs pesados de uma vez. Sistema se
+  autorrecuperou sozinho, sem intervenção manual. **Lição:** reativar grupos
+  inteiros de Câmara em lote pode gerar atraso generalizado temporário; evitar
+  fazer isso em horário de pico ou fazer em lotes menores.
 
 **P1 — reduz risco, não impede ir ao ar:**
 
