@@ -375,6 +375,28 @@ independente de tráfego:
   de log ficam fora deste repositório, configurados por ambiente
   (`TSE_APURACAO_CONTAINER`, `TSE_APURACAO_LOG_FILE`).
 
+**Pegadinha confirmada em 24/09/2026:** `crontab -e`/`crontab -l` **não** herda
+o ambiente do shell interativo (`~/.bashrc`/`~/.zshrc`) nem variáveis exportadas
+manualmente antes de editar o crontab — se `TSE_APURACAO_CONTAINER` não estiver
+declarada dentro do próprio arquivo do crontab (como variável, nas linhas antes
+do agendamento), o script cai no branch "roda PHP local" mesmo com o container
+Docker no ar, e falha silenciosamente com `php: not found` (ambiente sem PHP no
+host, ex.: WSL) — sem travar o cron nem gerar alerta, só parando de coletar. Já
+aconteceu de o container estar de pé há 20+ minutos com o tick de emergência
+completamente parado por causa disso. Forma correta de configurar, direto no
+`crontab -e`:
+
+```
+TSE_APURACAO_CONTAINER=tribuna_espiritosanto-app
+TSE_APURACAO_LOG_FILE=/caminho/para/o/log
+* * * * * /caminho/para/tse-apuracao/bin/tse-tick-loop.sh
+```
+
+Ao subir o ambiente local (`docker compose up` ou equivalente) depois de um
+período parado, sempre conferir se o log configurado está de fato crescendo
+(`tail -f`) e não só se o container está `Up` — os dois foram confundidos nesta
+sessão.
+
 O lock interno do `AE_Job_Runner` (`wp_cache_add` com TTL de 55 s) garante que essas
 chamadas extras nunca rodem em paralelo com o WP-Cron nem entre si — na pior das
 hipóteses, uma chamada recém-disparada encontra o lock ocupado e retorna
@@ -389,11 +411,57 @@ histórico de execuções.
 
 - migrar esse cron "de emergência" para um mecanismo suportado em produção (ex.:
   cron de sistema no servidor real, não um host de desenvolvimento) antes do
-  segundo simulado (22–24/09) e da eleição oficial;
+  segundo simulado (22–24/09) e da eleição oficial — **atenção à pegadinha da
+  variável de ambiente descrita acima**, ela se repete em qualquer ambiente
+  novo (homolog, produção, ou local recriado);
 - considerar paralelizar `collect_results` (hoje 1 worker) se, mesmo com disparo a
   cada 15 s, o TSE responder mais lento que o esperado sob carga real de eleição;
   o teste de hoje não indicou essa necessidade (82 jobs em 40 s com fonte
   respondendo normalmente), mas vale monitorar no simulado de 22–24/09.
+
+## Plano de prontidão para a eleição
+
+Primeiro turno previsto para **04/10/2026** (primeiro domingo de outubro, regra
+fixa da legislação eleitoral) — a partir de hoje (24/09), **faltam ~10 dias**.
+A janela do 2º simulado (22–24/09) termina hoje; não há mais nenhuma rodada de
+validação com dado real do TSE agendada antes da eleição oficial. Prioridades
+abaixo, em ordem de risco caso não sejam feitas:
+
+**P0 — bloqueia ir ao ar com segurança:**
+
+- sincronizar os fixes de 15/09 (2º turno marcado errado, votos anulados/
+  brancos/nulos ausentes, `seats` do Senado, CSS) com homolog **e** produção —
+  confirmado em 22/09 que o homolog ainda roda código de antes desses fixes;
+- migrar `tse-tick-loop.sh` para cron de sistema real em homolog e produção,
+  com a variável de ambiente configurada corretamente (ver pegadinha acima) —
+  sem isso, o site entra na eleição real dependendo só do WP-Cron por tráfego,
+  reproduzindo o incidente de atraso do 1º simulado;
+- confirmar se o `.gitlab-ci.yml` do Espírito Santo também inicializa
+  submódulos automaticamente no deploy (registrado como não confirmado em
+  22/09) — se não, produção sobe com o plugin desatualizado/ausente mesmo após
+  o bump do ponteiro do submódulo estar correto no monorepo;
+- fechar os itens 3, 4, 6, 8 e 10 do checklist do 2º simulado (linha acima) —
+  hoje é o último dia com dado real do TSE disponível para testar isso antes
+  da eleição.
+
+**P1 — reduz risco, não impede ir ao ar:**
+
+- rodar o teste de carga contra a coleta (`AE_TSE_Client`) sob concorrência,
+  não só contra a REST servindo snapshot em cache (o teste de 22/09 mediu
+  isso, faltou o outro caminho);
+- decidir e, se necessário, ligar Redis/Memcached/CDN com preservação de
+  cabeçalhos (decisão estava explicitamente adiada para depois do 2º simulado
+  — esse prazo é agora);
+- validar observabilidade (alerta de fila/atraso), rollback e retenção de
+  snapshot.
+
+**P2 — pode esperar para depois da eleição:**
+
+- EA14/EA15 e mapas municipais (só necessário se a cobertura crescer além de
+  cargo × UF, o que não é o caso de 2026);
+- páginas individuais de candidato, cache de fotos, atualização 4x/dia;
+- assinatura X.509, monitoramento de mudança de contrato EA11/EA20;
+- remoção de classes legadas.
 
 ## Avaliação de performance e prontidão (15/09/2026)
 
@@ -581,3 +649,17 @@ instalado em qualquer WordPress, sem depender deste grupo):
   corretamente; descoberta a divergência `and`/`tf` (não afeta a interface do
   plugin, registrada acima). Itens 3, 4, 6, 8, 9 e 10 do checklist do 2º
   simulado continuam pendentes.
+- **24/09/2026 (último dia do 2º simulado):** identificado e corrigido em
+  ambiente local o mesmo tipo de falha silenciosa do incidente de 15/09: o
+  crontab do host não tinha `TSE_APURACAO_CONTAINER` declarado, então o tick
+  de emergência caía no branch de PHP local (inexistente no host) e falhava
+  com `php: not found` a cada minuto, mesmo com o container Docker no ar —
+  confirmado que isso não aparece como container parado nem erro óbvio, só
+  como coleta silenciosamente desatualizada (pegadinha documentada acima, na
+  seção do incidente de 15/09). Corrigido localmente; validado que o tick
+  volta a rodar via `docker exec` (exit 0) e que `wp_ae_snapshots`/`wp_ae_jobs`
+  mostram coleta em tempo real (fila sem acúmulo, snapshot com poucos segundos
+  de idade). Criado o "Plano de prontidão para a eleição" abaixo com a mesma
+  pegadinha marcada como P0 para homolog/produção, dado que o 1º turno é
+  04/10/2026 (~10 dias a partir de hoje) e este foi o último dia com dado real
+  do TSE para testar antes da eleição oficial.
