@@ -591,6 +591,30 @@ não) a folga estimada aqui.
 - validar observabilidade, rollback, retenção e treinamento editorial;
 - migrar/remover classes legadas após validar todos os shortcodes existentes.
 
+## Front ao vivo — throttling de aba e cache de página (v2.3.7)
+
+Achado em 24/09/2026: um painel ficou ~10min mostrando `atualizado_em_local`
+antigo mesmo com a coleta rodando normal no servidor (confirmado via REST e
+banco, sempre frescos). Duas causas distintas, ambas endereçadas:
+
+- **Throttling de aba em segundo plano (causa real deste caso):**
+  `tse-live.js` dependia só de `setInterval` pro polling; navegadores
+  pausam/atrasam `setInterval` de abas inativas por muitos minutos pra
+  economizar bateria/CPU. Um visitante que deixa a aba aberta e minimizada
+  (padrão comum em cobertura eleitoral) pode ver dado desatualizado por um
+  bom tempo sem nenhum erro visível. **Corrigido na v2.3.7:** listener de
+  `visibilitychange` que dispara atualização imediata assim que a aba volta a
+  ficar visível, sem esperar o próximo tick do timer.
+- **Cache FastCGI do nginx (achado, não é bug):** `fastcgi_cache_valid 1m` no
+  template de nginx do host (`/etc/nginx/snippets/cache-directives.conf`)
+  cacheia a página por até 1 minuto, mas a regra de bypass já exclui qualquer
+  URL com query string — e é assim que `/wp-json/tse/v1/resultado` funciona,
+  então o polling ao vivo **nunca** passa por esse cache. O único efeito é o
+  HTML inicial (renderizado no servidor) poder estar até ~1min desatualizado
+  até o JS rodar seu primeiro poll (3s depois de carregar) e substituir os
+  valores. Comportamento seguro por design, só não estava documentado — vale
+  saber pra não confundir com um bug real numa futura investigação.
+
 ## Autonomia operacional — versão 2.3.0
 
 - o worker usa lock nomeado no MySQL, compartilhado entre WP-Cron, CLI e cron de
