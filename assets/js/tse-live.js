@@ -225,7 +225,13 @@
         setTimeout( () => widget.classList.remove( 'tse-atualizando' ), 450 );
     }
 
-    function initWidget( widget ) {
+	// Navegadores throttlam (ou pausam) setInterval em abas em segundo plano —
+	// numa aba esquecida em background por vários minutos, o polling regular
+	// pode simplesmente não rodar. Sem isto, o visitante volta à aba e vê um
+	// resultado antigo sem nenhum aviso, achando que é a apuração que travou.
+	const liveWidgets = [];
+
+	function initWidget( widget ) {
         const intervalo = parseInt( widget.dataset.atualizar, 10 );
         if ( ! intervalo || intervalo <= 0 ) return;
 
@@ -234,7 +240,18 @@
 
         // Depois polling regular
         setInterval( () => updateWidget( widget ), intervalo * 1000 );
+
+		liveWidgets.push( widget );
     }
+
+	// Assim que a aba volta a ficar visível, força um update imediato em vez de
+	// esperar o próximo tick do setInterval (que pode ter ficado parado/atrasado
+	// por causa do throttling de background do navegador).
+	document.addEventListener( 'visibilitychange', () => {
+		if ( 'visible' === document.visibilityState ) {
+			liveWidgets.forEach( updateWidget );
+		}
+	} );
 
 	function formatCountdown( seconds ) {
 		if ( seconds <= 0 ) return 'agora';

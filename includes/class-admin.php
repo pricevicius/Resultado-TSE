@@ -9,7 +9,7 @@ final class AE_Admin {
 	public function register(): void {
 		add_action( 'admin_menu', array( $this, 'menu' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'assets' ) );
-		foreach ( array( 'sync_tse', 'quick_setup', 'save_contest', 'start_import', 'retry_job', 'run_jobs', 'save_sync_selection' ) as $action ) { add_action( 'admin_post_ae_' . $action, array( $this, $action ) ); }
+		foreach ( array( 'sync_tse', 'quick_setup', 'save_contest', 'start_import', 'retry_job', 'run_jobs', 'save_sync_selection', 'wipe_test_data' ) as $action ) { add_action( 'admin_post_ae_' . $action, array( $this, $action ) ); }
 		add_action( 'wp_ajax_ae_admin_status', array( $this, 'ajax_status' ) );
 	}
 
@@ -40,6 +40,7 @@ final class AE_Admin {
 		$elections = $this->elections( true );
 		?><div class="ae-grid ae-two"><section class="ae-panel"><h2>Conectar ao TSE</h2><p>Sem copiar URLs: o plugin consulta o catálogo EA11 e monta todas as fontes conforme os diretórios oficiais.</p><form action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post"><?php wp_nonce_field('ae_sync_tse'); ?><input type="hidden" name="action" value="ae_sync_tse"><label>Ambiente<select name="environment"><option value="oficial">Oficial</option><option value="simulado" selected>Simulado 2026</option></select></label><label>Ano<input name="year" type="number" min="2022" max="2100" value="2026" required></label><button class="button button-primary button-hero">Sincronizar configuração do TSE</button><p class="description">Use o Simulado 2026 para validar a integracao com os arquivos oficiais do TSE. O limite de requisicoes e a protecao contra novas tentativas apos erro continuam ativos.</p></form></section>
 		<section class="ae-panel"><h2>Configuração existente</h2><?php if(!$elections): ?><p>Nenhuma eleição.</p><?php else: ?><table class="widefat striped"><thead><tr><th>Eleição</th><th>Status</th><th>Disputas</th></tr></thead><tbody><?php foreach($elections as $e): ?><tr><td><strong><?php echo esc_html($e->name); ?></strong><br><code><?php echo esc_html($e->slug); ?></code></td><td><?php echo esc_html($e->status); ?></td><td><?php echo esc_html((string)$e->contests); ?></td></tr><?php endforeach; ?></tbody></table><?php endif; ?></section></div>
+		<?php $this->test_data_panel(); ?>
 		<section class="ae-panel"><details><summary><strong>Estrutura local para desenvolvimento</strong></summary><p>Cria uma eleição local sem fontes externas. Use para testar tela zerada e cenários controlados antes dos simulados.</p><form class="ae-form-grid" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post"><?php wp_nonce_field('ae_quick_setup'); ?><input type="hidden" name="action" value="ae_quick_setup"><label>Ano<input name="year" type="number" min="2022" max="2100" value="2026" required></label><label>Nome<input name="name" value="Eleições Gerais 2026" required></label><div><button class="button">Criar estrutura de teste</button></div></form></details></section>
 		<section class="ae-panel"><h2>Adicionar disputa personalizada</h2><form class="ae-form-grid" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post"><?php wp_nonce_field('ae_save_contest'); ?><input type="hidden" name="action" value="ae_save_contest"><?php $this->election_select('election_id',$elections); ?><label>Turno<input name="round_no" type="number" min="1" max="3" value="1" required></label><label>Código do cargo<input name="position_code" value="0001" required></label><label>Nome do cargo<input name="position_name" placeholder="Presidente" required></label><label>Tipo<select name="scope_type"><option value="BR">Brasil</option><option value="UF">Estado</option><option value="MU">Município</option></select></label><label>Código<input name="scope_code" placeholder="BR ou ES" required></label><label>Abrangência<input name="scope_name" placeholder="Brasil ou Espírito Santo" required></label><label>Vagas<input name="seats" type="number" min="1" value="1" required></label><div><button class="button button-primary">Adicionar disputa</button></div></form></section><?php $this->setup_guide(); ?><?php
 	}
@@ -54,6 +55,35 @@ final class AE_Admin {
 			<li><span>5</span><div><strong>Publique</strong><p>Use <code>[tse_apuracao cargo="governador" uf="es"]</code> para um placar ou <code>[apuracao_candidatos]</code> para o catálogo. Visitantes consultam apenas este WordPress; a coleta do TSE ocorre no servidor com limite interno e cache condicional.</p></div></li>
 		</ol>
 		<p class="description">Se a fila registrar 403 ou 429, aguarde a pausa de segurança de dez minutos e confira a aba Logs. Um 404 desativa somente a fonte inexistente, sem interromper os demais resultados.</p>
+		</section><?php
+	}
+
+	/** Simulado nunca tem valor legal (nem se converte em Oficial); tudo sob esse ambiente é dado de teste, apagável de um clique. */
+	private function test_data_panel(): void {
+		global $wpdb; $p = $wpdb->prefix . 'ae_';
+		$election_ids = $wpdb->get_col( "SELECT id FROM {$p}elections WHERE config_json LIKE '%\"environment\":\"simulado\"%'" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$counts = array( 'elections' => count( $election_ids ), 'contests' => 0, 'snapshots' => 0, 'jobs' => 0 );
+		if ( $election_ids ) {
+			$placeholders = implode( ',', array_fill( 0, count( $election_ids ), '%d' ) );
+			$contest_ids = $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$p}contests WHERE election_id IN ({$placeholders})", ...$election_ids ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$counts['contests'] = count( $contest_ids );
+			if ( $contest_ids ) {
+				$cplaceholders = implode( ',', array_fill( 0, count( $contest_ids ), '%d' ) );
+				$counts['snapshots'] = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$p}snapshots WHERE contest_id IN ({$cplaceholders})", ...$contest_ids ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				foreach ( $contest_ids as $cid ) { $counts['jobs'] += (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$p}jobs WHERE payload_json LIKE %s OR payload_json LIKE %s", '%"contest_id":' . (int) $cid . ',%', '%"contest_id":' . (int) $cid . '}%' ) ); } // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			}
+		}
+		?><section class="ae-panel"><h2>Dados de teste (Simulado)</h2>
+		<p class="description">Tudo que foi sincronizado com ambiente <strong>Simulado</strong> é dado de teste — o TSE nunca dá valor legal a ele nem o converte em Oficial. Use isto para limpar antes de sincronizar com o ambiente Oficial.</p>
+		<p><strong><?php echo esc_html( (string) $counts['elections'] ); ?></strong> eleição(ões), <strong><?php echo esc_html( (string) $counts['contests'] ); ?></strong> disputa(s), <strong><?php echo esc_html( (string) $counts['snapshots'] ); ?></strong> snapshot(s) e <strong><?php echo esc_html( (string) $counts['jobs'] ); ?></strong> job(s) marcados como Simulado.</p>
+		<?php if ( $counts['elections'] ) : ?>
+		<form action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="post" onsubmit="return confirm('Apagar TODOS os dados de Simulado? Isso não pode ser desfeito.');">
+		<?php wp_nonce_field( 'ae_wipe_test_data' ); ?>
+		<input type="hidden" name="action" value="ae_wipe_test_data">
+		<label><input type="checkbox" name="confirm" value="1" required> Confirmo que quero apagar todos os dados do ambiente Simulado (irreversível).</label>
+		<div><button class="button" style="border-color:#d63638;color:#d63638;">Apagar dados de teste</button></div>
+		</form>
+		<?php else : ?><p><em>Nenhum dado de Simulado encontrado.</em></p><?php endif; ?>
 		</section><?php
 	}
 
@@ -140,6 +170,30 @@ final class AE_Admin {
 		}
 		AE_Logger::write( 'info', 'sync_selection_saved', array( 'total' => count( $ids ), 'enabled' => count( $enabled_ids ) ) );
 		$this->redirect( 'selecao', 'Seleção salva: ' . count( $enabled_ids ) . ' de ' . count( $ids ) . ' disputas sincronizando automaticamente.' );
+	}
+
+	/** Simulado nao tem valor legal nem se converte em Oficial; apaga apenas o que foi sincronizado sob esse ambiente. */
+	public function wipe_test_data(): void {
+		$this->verify( 'ae_wipe_test_data' );
+		if ( empty( $_POST['confirm'] ) ) { $this->redirect( 'setup', 'Confirme a caixa de seleção para apagar os dados de teste.', 'error' ); }
+		global $wpdb; $p = $wpdb->prefix . 'ae_';
+		$election_ids = $wpdb->get_col( "SELECT id FROM {$p}elections WHERE config_json LIKE '%\"environment\":\"simulado\"%'" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		if ( ! $election_ids ) { $this->redirect( 'setup', 'Nenhum dado de Simulado encontrado.' ); }
+		$eplaceholders = implode( ',', array_fill( 0, count( $election_ids ), '%d' ) );
+		$contest_ids = $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$p}contests WHERE election_id IN ({$eplaceholders})", ...$election_ids ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		if ( $contest_ids ) {
+			$cplaceholders = implode( ',', array_fill( 0, count( $contest_ids ), '%d' ) );
+			$wpdb->query( $wpdb->prepare( "DELETE FROM {$p}result_rows WHERE snapshot_id IN (SELECT id FROM {$p}snapshots WHERE contest_id IN ({$cplaceholders}))", ...$contest_ids ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->query( $wpdb->prepare( "DELETE FROM {$p}snapshots WHERE contest_id IN ({$cplaceholders})", ...$contest_ids ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			// Jobs guardam contest_id dentro do payload_json, nao numa coluna: mesmo padrao com limite de "," ou "}" usado na deduplicacao da fila.
+			foreach ( $contest_ids as $cid ) { $wpdb->query( $wpdb->prepare( "DELETE FROM {$p}jobs WHERE payload_json LIKE %s OR payload_json LIKE %s", '%"contest_id":' . (int) $cid . ',%', '%"contest_id":' . (int) $cid . '}%' ) ); } // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->query( $wpdb->prepare( "DELETE FROM {$p}contests WHERE id IN ({$cplaceholders})", ...$contest_ids ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		}
+		$wpdb->query( $wpdb->prepare( "DELETE FROM {$p}candidates WHERE election_id IN ({$eplaceholders})", ...$election_ids ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query( $wpdb->prepare( "DELETE FROM {$p}elections WHERE id IN ({$eplaceholders})", ...$election_ids ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query( "DELETE FROM {$wpdb->prefix}options WHERE option_name LIKE 'ae\\_tse\\_%' OR option_name LIKE 'ae\\_result\\_checked\\_%' OR option_name IN ('ae_last_kick_at','ae_last_purge_at')" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		AE_Logger::write( 'warning', 'test_data_wiped', array( 'elections' => count( $election_ids ), 'contests' => count( $contest_ids ) ) );
+		$this->redirect( 'setup', 'Dados de teste (Simulado) apagados: ' . count( $election_ids ) . ' eleição(ões), ' . count( $contest_ids ) . ' disputa(s).' );
 	}
 
 	public function sync_tse(): void {
