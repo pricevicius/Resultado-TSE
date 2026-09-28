@@ -29,9 +29,11 @@ final class AE_Admin {
 
 	private function tab_overview(): void {
 		global $wpdb; $p = $wpdb->prefix . 'ae_'; $counts = array(
-			'elections'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$p}elections"), 'contests'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$p}contests WHERE active=1"), 'candidates'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$p}candidates"), 'snapshots'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$p}snapshots WHERE status='valid'") ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			'elections'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$p}elections"), 'contests'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$p}contests WHERE active=1"), 'enabled'=>$this->count_enabled_contests(), 'candidates'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$p}candidates"), 'snapshots'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$p}snapshots WHERE status='valid'") ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$next = wp_next_scheduled( 'ae_run_jobs' );
-		$this->setup_guide(); ?><div class="ae-grid ae-stats"><?php foreach ( array( 'elections'=>'Eleições', 'contests'=>'Disputas ativas', 'candidates'=>'Candidatos', 'snapshots'=>'Snapshots válidos' ) as $key=>$label ) : ?><div class="ae-card"><strong><?php echo esc_html( number_format_i18n( $counts[$key] ) ); ?></strong><span><?php echo esc_html( $label ); ?></span></div><?php endforeach; ?></div>
+		// "Sincronizadas" = existem no banco (o EA11 sempre traz as 27 UFs); "Habilitadas" = de fato coletando/importando — evita o rotulo antigo ("Disputas ativas") dar a entender que tudo esta sendo importado.
+		$this->setup_guide(); ?><div class="ae-grid ae-stats"><?php foreach ( array( 'elections'=>'Eleições', 'contests'=>'Disputas sincronizadas', 'enabled'=>'Habilitadas p/ coleta', 'candidates'=>'Candidatos', 'snapshots'=>'Snapshots válidos' ) as $key=>$label ) : ?><div class="ae-card"><strong><?php echo esc_html( number_format_i18n( $counts[$key] ) ); ?></strong><span><?php echo esc_html( $label ); ?></span></div><?php endforeach; ?></div>
+		<?php if ( $counts['contests'] > 0 && $counts['enabled'] < $counts['contests'] ) : ?><p class="description">Sincronizar sempre traz o catálogo nacional do TSE (todas as UFs) — só as <strong><?php echo esc_html( number_format_i18n( $counts['enabled'] ) ); ?></strong> disputas "habilitadas p/ coleta" são de fato coletadas e entram na importação de candidatos. Ajuste em <a href="<?php echo esc_url( $this->url( 'selecao' ) ); ?>">Seleção de disputas</a>.</p><?php endif; ?>
 		<div class="ae-grid ae-two"><section class="ae-panel"><h2>Comece em três passos</h2><ol class="ae-steps"><li><span>1</span><div><strong>Sincronize com o TSE</strong><p>O plugin lê o EA11 e cria eleições, cargos, turnos e fontes oficiais.</p><a class="button" href="<?php echo esc_url($this->url('setup')); ?>">Sincronizar</a></div></li><li><span>2</span><div><strong>Importe candidatos</strong><p>O arquivo oficial de Dados Abertos é localizado automaticamente.</p><a class="button" href="<?php echo esc_url($this->url('import')); ?>">Importar</a></div></li><li><span>3</span><div><strong>Publique o componente</strong><p>Bloco e shortcode atualizam no cliente pela API do seu WordPress.</p><a class="button button-primary" href="<?php echo esc_url($this->url('import')); ?>#ae-collection">Ver coleta</a></div></li></ol></section>
 		<section class="ae-panel"><h2>Saúde</h2><dl class="ae-health"><dt>Banco</dt><dd><span class="ae-dot ae-ok"></span> schema <?php echo esc_html((string)get_option('ae_schema_version','não instalado')); ?></dd><dt>Processador</dt><dd><?php echo $next ? '<span class="ae-dot ae-ok"></span> próximo ciclo em '.esc_html(human_time_diff(time(),$next)) : '<span class="ae-dot ae-bad"></span> cron não agendado'; ?></dd><dt>Último snapshot</dt><dd><?php echo esc_html((string)($wpdb->get_var("SELECT MAX(captured_at) FROM {$p}snapshots WHERE status='valid'") ?: 'ainda não recebido')); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared ?></dd></dl><?php $this->run_button(); ?></section></div><?php
 	}
@@ -120,7 +122,9 @@ final class AE_Admin {
 			if ( $contest_ids ) {
 				$cplaceholders = implode( ',', array_fill( 0, count( $contest_ids ), '%d' ) );
 				$counts['snapshots'] = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$p}snapshots WHERE contest_id IN ({$cplaceholders})", ...$contest_ids ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-				foreach ( $contest_ids as $cid ) { $counts['jobs'] += (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$p}jobs WHERE payload_json LIKE %s OR payload_json LIKE %s", '%"contest_id":' . (int) $cid . ',%', '%"contest_id":' . (int) $cid . '}%' ) ); } // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				// Uma query com JSON_EXTRACT em vez de 1 LIKE '%...%' por disputa: com a fila de jobs em dezenas de milhares de linhas
+				// (acumulada dos simulados), o loop antigo levava minutos nessa tela sozinha — medido em homolog: 83s vs 0,37s.
+				$counts['jobs'] = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$p}jobs WHERE CAST(JSON_UNQUOTE(JSON_EXTRACT(payload_json,'$.contest_id')) AS UNSIGNED) IN ({$cplaceholders})", ...$contest_ids ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			}
 		}
 		?><section class="ae-panel"><h2>Dados de teste (Simulado)</h2>
@@ -238,8 +242,8 @@ final class AE_Admin {
 			$cplaceholders = implode( ',', array_fill( 0, count( $contest_ids ), '%d' ) );
 			$wpdb->query( $wpdb->prepare( "DELETE FROM {$p}result_rows WHERE snapshot_id IN (SELECT id FROM {$p}snapshots WHERE contest_id IN ({$cplaceholders}))", ...$contest_ids ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$wpdb->query( $wpdb->prepare( "DELETE FROM {$p}snapshots WHERE contest_id IN ({$cplaceholders})", ...$contest_ids ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-			// Jobs guardam contest_id dentro do payload_json, nao numa coluna: mesmo padrao com limite de "," ou "}" usado na deduplicacao da fila.
-			foreach ( $contest_ids as $cid ) { $wpdb->query( $wpdb->prepare( "DELETE FROM {$p}jobs WHERE payload_json LIKE %s OR payload_json LIKE %s", '%"contest_id":' . (int) $cid . ',%', '%"contest_id":' . (int) $cid . '}%' ) ); } // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			// Jobs guardam contest_id dentro do payload_json, nao numa coluna: JSON_EXTRACT numa query so, em vez de 1 LIKE '%...%' por disputa (110 varreduras da tabela inteira era o gargalo medido em homolog).
+			$wpdb->query( $wpdb->prepare( "DELETE FROM {$p}jobs WHERE CAST(JSON_UNQUOTE(JSON_EXTRACT(payload_json,'$.contest_id')) AS UNSIGNED) IN ({$cplaceholders})", ...$contest_ids ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$wpdb->query( $wpdb->prepare( "DELETE FROM {$p}contests WHERE id IN ({$cplaceholders})", ...$contest_ids ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		}
 		$wpdb->query( $wpdb->prepare( "DELETE FROM {$p}candidates WHERE election_id IN ({$eplaceholders})", ...$election_ids ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
@@ -284,6 +288,18 @@ final class AE_Admin {
 		$id = AE_Job_Runner::enqueue( 'import_candidates', $payload );
 		$detalhe = $scope['ufs'] ? ' (' . implode( ', ', $scope['ufs'] ) . ')' : ' (Brasil inteiro — nenhuma disputa habilitada em Seleção de disputas)';
 		$this->redirect( 'jobs', 'Importação oficial de candidatos adicionada à fila' . $detalhe . '. Job #' . $id . '.' );
+	}
+
+	/** Conta quantas disputas ativas têm collection.enabled=true (ou omisso, que também conta como ligado) — usado no card "Habilitadas p/ coleta" da Visão geral. */
+	private function count_enabled_contests(): int {
+		global $wpdb; $p = $wpdb->prefix . 'ae_';
+		$rows = $wpdb->get_col( "SELECT config_json FROM {$p}contests WHERE active=1" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$enabled = 0;
+		foreach ( $rows as $config_json ) {
+			$config = json_decode( (string) $config_json, true );
+			if ( ! isset( $config['collection']['enabled'] ) || $config['collection']['enabled'] ) { $enabled++; }
+		}
+		return $enabled;
 	}
 
 	/** Deriva UFs e cargos (CD_CARGO, sem zero-padding) a partir das disputas com collection.enabled=true — a mesma seleção usada pra coleta de resultado. */
