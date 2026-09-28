@@ -11,6 +11,7 @@ require_once AE_DIR . 'includes/class-candidate-catalog.php';
 require_once AE_DIR . 'includes/class-rest.php';
 require_once AE_DIR . 'includes/class-shortcodes.php';
 require_once AE_DIR . 'includes/class-admin.php';
+require_once AE_DIR . 'includes/class-slack-report.php';
 
 final class AE_Plugin {
 	private static ?AE_Plugin $instance = null;
@@ -44,6 +45,7 @@ final class AE_Plugin {
 			wp_schedule_event( time() + 60, 'ae_minute', 'ae_run_jobs' );
 		}
 		add_action( 'ae_run_jobs', array( AE_Job_Runner::instance(), 'tick' ) );
+		AE_Slack_Report::init();
 		add_action( 'rest_api_init', array( AE_REST::instance(), 'register_routes' ) );
 		add_action( 'init', array( AE_Shortcodes::instance(), 'register' ) );
 		add_action( 'init', array( $this, 'register_blocks' ) );

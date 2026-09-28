@@ -28,6 +28,8 @@ final class AE_TSE_Discovery {
 	public static function sync( array $payload ): array {
 		$environment = sanitize_key( $payload['environment'] ?? 'oficial' );
 		$year = max( 2022, absint( $payload['year'] ?? 2026 ) );
+		// UF do site (opcional pra compatibilidade, mas sem ela toda disputa nova nasce ligada nas 27 UFs).
+		$site_uf = strtoupper( substr( sanitize_key( $payload['site_uf'] ?? get_option( 'ae_site_uf', '' ) ), 0, 2 ) );
 		$url = self::config_url( $environment );
 		$catalog = AE_TSE_Client::instance()->fetch_json( $url, false );
 		if ( empty( $catalog['pl'] ) || ! is_array( $catalog['pl'] ) ) {
@@ -42,7 +44,7 @@ final class AE_TSE_Discovery {
 			foreach ( (array) ( $pleito['e'] ?? array() ) as $election ) {
 				if ( ! is_array( $election ) || ! self::is_year( $election, $year ) ) { continue; }
 				// In the current EA11, the cycle belongs to each pleito, not the root object.
-				self::save_election( $environment, sanitize_text_field( (string) ( $pleito['c'] ?? $cycle ) ), $files, $pleito, $election, $year );
+				self::save_election( $environment, sanitize_text_field( (string) ( $pleito['c'] ?? $cycle ) ), $files, $pleito, $election, $year, $site_uf );
 				$matched++;
 			}
 		}
@@ -55,7 +57,7 @@ final class AE_TSE_Discovery {
 		return array( 'complete' => true );
 	}
 
-	private static function save_election( string $environment, string $cycle, array $files, array $pleito, array $election, int $year ): void {
+	private static function save_election( string $environment, string $cycle, array $files, array $pleito, array $election, int $year, string $site_uf = '' ): void {
 		global $wpdb;
 		$p = $wpdb->prefix . 'ae_';
 		$tse_code = absint( $election['cd'] ?? 0 );
@@ -83,7 +85,9 @@ final class AE_TSE_Discovery {
 					// deve tocar em source_url/kind/interval, nunca reativar algo que foi desmarcado.
 					$existing_config_json = $wpdb->get_var( $wpdb->prepare( "SELECT config_json FROM {$p}contests WHERE election_id=%d AND external_id=%s", $id, $external ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 					$existing_config = json_decode( (string) $existing_config_json, true );
-					$enabled = isset( $existing_config['collection']['enabled'] ) ? (bool) $existing_config['collection']['enabled'] : true;
+					// Disputa ja existente: preserva o que o admin marcou. Disputa nova: sem UF do site configurada, nasce ligada (compatibilidade); com UF configurada, nasce ligada só se for dessa UF ou nacional (br) — Presidente é o único cargo nacional hoje.
+					$default_enabled = '' === $site_uf || strtoupper( $contest_scope ) === $site_uf || 'br' === $contest_scope;
+					$enabled = isset( $existing_config['collection']['enabled'] ) ? (bool) $existing_config['collection']['enabled'] : $default_enabled;
 					$contest_config = array( 'collection' => array( 'source_url' => $source_url, 'kind' => 'EA20', 'interval' => 60, 'enabled' => $enabled, 'managed' => true ) );
 					// EA11 nao informa vagas; Senado renova por tercos alternados e 2026 elege 1 vaga por UF (2022 elegeu 2).
 					$seats = 1;

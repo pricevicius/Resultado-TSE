@@ -4,20 +4,35 @@
 
 Este é o runbook técnico e funcional do plugin. Ele registra o que foi implementado, o que foi decidido e o que ainda está planejado. Toda mudança que altere fonte, contrato JSON, frequência, cache, fila, interface administrativa ou publicação deve atualizar este arquivo.
 
-Última revisão: 22/09/2026, manhã (1º dia da janela do 2º simulado do TSE, 22–24/09).
+Última revisão: 28/09/2026 (janela extra de simulado, 28–29/09) — UF do site adicionada ao passo de sincronização.
 
 ## Objetivo
 
 Entregar uma experiência plug and play para publishers em WordPress:
 
-1. o administrador escolhe **Oficial** ou **Simulado** e clica em **Sincronizar configuração do TSE**;
-2. o plugin lê o EA11 (`ele-c.json`) e cria eleições, turnos, cargos, abrangências e URLs EA20;
-3. o administrador escolhe a eleição e clica em **Buscar e importar candidatos**;
-4. o plugin localiza o pacote oficial no Portal de Dados Abertos, baixa e processa todos os CSVs do ZIP em lotes;
+1. o administrador escolhe **Oficial** ou **Simulado**, informa a **UF deste site** e clica em **Sincronizar configuração do TSE**;
+2. o plugin lê o EA11 (`ele-c.json`) e cria eleições, turnos, cargos e abrangências — só nascem **ligadas** para coleta as disputas da UF informada (+ Presidente, que é nacional); as das outras 26 UFs nascem desligadas automaticamente;
+3. o administrador escolhe a eleição e clica em **Buscar e importar candidatos** — a importação já herda o mesmo recorte (UF + cargos ligados), sem precisar escolher nada de novo;
+4. o plugin localiza o pacote oficial no Portal de Dados Abertos, baixa o ZIP nacional mas processa só o CSV da UF do site e só os cargos habilitados;
 5. a coleta ocorre no servidor, grava snapshots auditáveis e abastece a API REST do WordPress;
 6. blocos e shortcodes atualizam no navegador consultando apenas o próprio WordPress.
 
 Nenhum visitante consulta o TSE diretamente. Nenhum operador precisa montar ou colar uma URL.
+
+### Guia rápido — primeira instalação num site novo
+
+Passo a passo pra quem está configurando o plugin pela primeira vez, do zero:
+
+1. **Ative o plugin.** As tabelas e o agendamento de coleta são criados sozinhos assim que o WordPress carrega a primeira vez com o plugin ativo — nenhum comando manual é necessário.
+2. Vá em **Apuração → Configuração**.
+3. Escolha o **Ambiente**: use **Simulado** pra testar (só funciona nos horários que o TSE anuncia); use **Oficial** só depois que o TSE publicar a eleição real (antes disso ele responde com o ciclo antigo e a sincronização falha de propósito, avisando isso).
+4. **Preencha a UF deste site** (ex.: `ES`, `PE`). Esse campo é o que impede o site de puxar coleta e candidatos do Brasil inteiro sem querer — **não pule esse campo**, mesmo que ele não seja tecnicamente obrigatório.
+5. Clique em **Sincronizar configuração do TSE**. Isso cria as eleições e ~109 disputas nacionais no banco, mas só liga pra coleta as da sua UF + Presidente.
+6. (Opcional) Vá em **Seleção de disputas** só se precisar de um ajuste fino diferente do padrão (ex.: ligar também uma disputa de outra UF por algum motivo específico, ou desligar algo da própria UF que não vai ser publicado). Na maioria dos casos não precisa mexer aqui.
+7. Vá em **Importar e coletar** e clique em **Buscar e importar candidatos**. A tela mostra antes de clicar quais UFs/cargos serão trazidos — confirme que bate com o que você espera.
+8. Publique com `[tse_apuracao cargo="governador" uf="es"]` (placar de uma disputa) ou `[apuracao_candidatos]` (catálogo de candidatos).
+
+Se `[tse_apuracao ...]` e `[apuracao_candidatos]` não aparecem no editor de blocos, publique o shortcode direto no conteúdo do post/página — os dois funcionam como shortcode clássico, sem precisar do bloco.
 
 ## Fontes oficiais e contratos
 
@@ -88,8 +103,9 @@ Snapshots são imutáveis. Payload repetido pelo mesmo SHA-256 não cria nova ve
 O menu único **Apuração** contém:
 
 - **Visão geral:** contadores, saúde do schema/cron, último snapshot e atalhos.
-- **Configuração:** seletor Oficial/Simulado e botão de sincronização automática do EA11. A criação local de 83 disputas fica recolhida em “Estrutura local para desenvolvimento”.
-- **Importar e coletar:** botão de importação automática de candidatos e explicação da coleta protegida. Não existem campos de URL no fluxo comum.
+- **Configuração:** seletor Oficial/Simulado, campo **UF deste site** (define quais disputas nascem ligadas na sincronização) e botão de sincronização automática do EA11. A criação local de 83 disputas fica recolhida em “Estrutura local para desenvolvimento”.
+- **Seleção de disputas:** ajuste fino opcional — liga/desliga disputa por disputa. Não é mais o único lugar que decide o recorte por UF (isso já acontece na sincronização), só sobrepõe caso a caso quando necessário.
+- **Importar e coletar:** botão de importação automática de candidatos e explicação da coleta protegida. A tela mostra, antes de importar, quais UFs e cargos serão trazidos (derivado das disputas ligadas). Não existem campos de URL no fluxo comum.
 - **Fila e progresso:** jobs, tentativas, erros, cursor e retry.
 - **Logs:** cem eventos mais recentes.
 
@@ -97,14 +113,20 @@ A antiga tela duplicada em **Configurações > TSE Apuração** deixou de ser re
 
 ## Importação de candidatos implementada
 
-O botão deriva o ano da eleição e usa o pacote oficial `consulta_cand_{ANO}.zip`. O processamento:
+O botão deriva o ano da eleição e usa o pacote oficial `consulta_cand_{ANO}.zip` — esse pacote é sempre nacional, o TSE não oferece download por UF, então o download em si não encolhe. O que encolhe é o processamento:
 
-- baixa o ZIP uma vez para arquivo temporário;
-- percorre todos os CSVs do ZIP;
-- lê por streaming e lotes de 250 linhas;
+- baixa o ZIP uma vez para arquivo temporário (o arquivo inteiro, ~30 CSVs, um por UF + Brasil);
+- **processa só o(s) CSV(s) da(s) UF(s) das disputas ligadas** (derivado de `AE_Admin::import_scope_from_selection()`, que lê `collection.enabled` de cada disputa — a mesma seleção usada pra coleta de resultado). Se Presidente estiver ligado, inclui também os arquivos `BR`/`BRASIL`;
+- dentro de cada CSV, **filtra linha por linha pelo cargo** (`CD_CARGO`) das disputas ligadas — mantém vice/suplente do mesmo cargo;
+- se nenhuma disputa estiver ligada (UF do site não configurada), cai no comportamento antigo e processa o Brasil inteiro, sem travar nem falhar silenciosamente;
+- lê por streaming e lotes de 250 linhas (contra o arquivo, não contra as linhas já filtradas — o cursor de retomada continua consistente mesmo descartando linha por cargo);
 - salva cursor de arquivo + linha para retomada;
 - importa `SQ_CANDIDATO`, nomes, número, partido e situação;
 - permite que o EA20 complete candidatos ausentes e derive a foto oficial por `sqcand`.
+
+**Dependência de ambiente:** requer a extensão `php-zip` (`ZipArchive`). Confirmar no `docker/Dockerfile` local (`php8.2-zip`) e em homolog/produção antes de usar.
+
+**Resiliência:** o nome/partido/número de cada candidato também é gravado direto em `ae_result_rows` no momento da coleta (não só via `candidate_id` em `ae_candidates`) — se o cadastro de candidatos ainda não existir ou estiver temporariamente fora de sincronia com o resultado, a tela mostra o nome capturado no snapshot em vez de cair para o ID numérico do TSE.
 
 ## Normalização EA20 implementada
 

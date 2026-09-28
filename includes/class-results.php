@@ -14,7 +14,8 @@ final class AE_Results {
 		$key = 'snapshot:' . $snapshot->id;
 		$data = wp_cache_get( $key, 'apuracao-eleitoral' );
 		if ( false === $data ) {
-			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT r.rank_no,r.external_candidate_id,r.votes,r.percentage,r.elected,r.situation,c.ballot_name,c.full_name,c.ballot_number,c.party,c.photo_url FROM {$p}result_rows r LEFT JOIN {$p}candidates c ON c.id=r.candidate_id WHERE r.snapshot_id=%d ORDER BY r.rank_no ASC, r.votes DESC", $snapshot->id ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			// COALESCE prioriza o cadastro oficial (c.*, tem foto e pode ter sido corrigido depois) e cai pro nome gravado junto com o snapshot quando o candidato ainda nao existe em ae_candidates ou foi reimportado.
+			$rows = $wpdb->get_results( $wpdb->prepare( "SELECT r.rank_no,r.external_candidate_id,r.votes,r.percentage,r.elected,r.situation,COALESCE(c.ballot_name,r.ballot_name) ballot_name,COALESCE(c.full_name,r.full_name) full_name,COALESCE(c.ballot_number,r.ballot_number) ballot_number,COALESCE(c.party,r.party) party,c.photo_url FROM {$p}result_rows r LEFT JOIN {$p}candidates c ON c.id=r.candidate_id WHERE r.snapshot_id=%d ORDER BY r.rank_no ASC, r.votes DESC", $snapshot->id ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$data = array( 'contest' => $this->contest_meta( $contest ), 'snapshot' => array( 'id' => (int) $snapshot->id, 'captured_at' => gmdate( DATE_RFC3339, strtotime( $snapshot->captured_at . ' UTC' ) ), 'generated_at' => $snapshot->generated_at ? gmdate( DATE_RFC3339, strtotime( $snapshot->generated_at . ' UTC' ) ) : null, 'totals' => json_decode( $snapshot->totals_json, true ) ), 'candidates' => $rows );
 			wp_cache_set( $key, $data, 'apuracao-eleitoral', HOUR_IN_SECONDS );
 		}

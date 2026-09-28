@@ -14,8 +14,11 @@ final class AE_TSE_Client {
 		if ( ! $election_id || ! $this->allowed_url( $url ) ) { throw new RuntimeException( 'Fonte de candidatos invalida.' ); }
 		$offset = absint( $cursor['offset'] ?? 0 );
 		$format = strtolower( sanitize_key( $payload['format'] ?? pathinfo( (string) wp_parse_url( $url, PHP_URL_PATH ), PATHINFO_EXTENSION ) ) );
+		// Escopo vem das disputas marcadas em "Seleção de disputas" (AE_Admin::start_import) — nunca digitado à mão.
+		$ufs = array_map( static fn( $v ) => strtoupper( substr( sanitize_key( (string) $v ), 0, 2 ) ), (array) ( $payload['ufs'] ?? array() ) );
+		$cargos = array_map( static fn( $v ) => (string) absint( $v ), (array) ( $payload['cargos'] ?? array() ) );
 		if ( in_array( $format, array( 'csv', 'zip' ), true ) ) {
-			$batch_data = $this->read_open_data_batch( $url, $format, $cursor, $job_id );
+			$batch_data = $this->read_open_data_batch( $url, $format, $cursor, $job_id, $ufs, $cargos );
 			$batch = $batch_data['rows']; $complete = $batch_data['complete'];
 		} else {
 			$response = $this->get_json( $url ); $items = $response['candidatos'] ?? $response['items'] ?? $response;
@@ -68,7 +71,8 @@ final class AE_TSE_Client {
 		$snapshot_id = (int) $wpdb->insert_id;
 		foreach ( $normalized['candidates'] as $candidate ) {
 			$candidate_id = $this->upsert_result_candidate( $contest_id, $candidate, $url );
-			$wpdb->insert( $p . 'result_rows', array( 'snapshot_id' => $snapshot_id, 'candidate_id' => $candidate_id ? (int) $candidate_id : null, 'external_candidate_id' => $candidate['external_id'], 'rank_no' => $candidate['rank'], 'votes' => $candidate['votes'], 'percentage' => $candidate['percentage'], 'elected' => $candidate['elected'], 'situation' => $candidate['situation'] ), array( '%d','%d','%s','%d','%d','%f','%d','%s' ) );
+			// Nome/partido gravados aqui tambem (nao so via candidate_id) pra sobreviver mesmo se o cadastro em ae_candidates ainda nao existir ou for reimportado depois.
+			$wpdb->insert( $p . 'result_rows', array( 'snapshot_id' => $snapshot_id, 'candidate_id' => $candidate_id ? (int) $candidate_id : null, 'external_candidate_id' => $candidate['external_id'], 'rank_no' => $candidate['rank'], 'votes' => $candidate['votes'], 'percentage' => $candidate['percentage'], 'elected' => $candidate['elected'], 'situation' => $candidate['situation'], 'ballot_name' => $candidate['ballot_name'], 'full_name' => $candidate['full_name'], 'ballot_number' => $candidate['ballot_number'], 'party' => $candidate['party'] ), array( '%d','%d','%s','%d','%d','%f','%d','%s','%s','%s','%s','%s' ) );
 		}
 		AE_Results::instance()->invalidate( $snapshot_id );
 		AE_Logger::write( 'info', 'snapshot_valid', array( 'contest_id' => $contest_id, 'snapshot_id' => $snapshot_id, 'sha256' => $sha ) );
@@ -230,10 +234,13 @@ final class AE_TSE_Client {
 	private function decimal( mixed $value ): float { return (float) str_replace( ',', '.', (string) $value ); }
 
 	/** Reads only the requested page from a staged CSV/ZIP, so a cron retry resumes by line. */
-	private function read_open_data_batch( string $url, string $format, array $cursor, int $job_id ): array {
+	private function read_open_data_batch( string $url, string $format, array $cursor, int $job_id, array $ufs = array(), array $cargos = array() ): array {
 		$offset = absint( $cursor['offset'] ?? 0 );
 		$path = get_transient( 'ae_import_file_' . $job_id );
 		if ( ! $path || ! is_readable( $path ) ) {
+			// wp_tempnam() só é carregado em contexto de admin; import_candidates roda via WP-Cron
+			// (ae_run_jobs) e via bin/tse-tick.php, nenhum dos dois carrega wp-admin/includes/file.php sozinho.
+			if ( ! function_exists( 'wp_tempnam' ) ) { require_once ABSPATH . 'wp-admin/includes/file.php'; }
 			$path = wp_tempnam( $url );
 			if ( ! $path ) { throw new RuntimeException( 'Não foi possível preparar o arquivo de candidatos.' ); }
 			$response = wp_remote_get( $url, array( 'timeout' => 300, 'redirection' => 2, 'stream' => true, 'filename' => $path, 'headers' => array( 'Accept' => 'application/zip,application/octet-stream', 'User-Agent' => 'WordPress Apuracao Eleitoral/' . AE_VERSION ) ) );
@@ -249,6 +256,16 @@ final class AE_TSE_Client {
 			$zip = new ZipArchive();
 			if ( true !== $zip->open( $path ) ) { throw new RuntimeException( 'Arquivo ZIP TSE invalido.' ); }
 			for ( $i = 0; $i < $zip->numFiles; $i++ ) { $name = $zip->getNameIndex( $i ); if ( str_ends_with( strtolower( $name ), '.csv' ) ) { $csv_names[] = $name; } }
+			if ( $ufs ) {
+				// O pacote de Dados Abertos do TSE traz um CSV por UF dentro do ZIP (ex.: consulta_cand_2026_ES.csv). Presidente (cargo 1) fica num arquivo à parte (BR/BRASIL).
+				$patterns = $ufs;
+				if ( in_array( '1', $cargos, true ) ) { $patterns = array_merge( $patterns, array( 'BR', 'BRASIL' ) ); }
+				$regex = '/_(' . implode( '|', array_map( static fn( $p ) => preg_quote( $p, '/' ), $patterns ) ) . ')\.csv$/i';
+				$filtered = array_values( array_filter( $csv_names, static fn( $name ) => (bool) preg_match( $regex, $name ) ) );
+				// Se o padrão de nome não bater com nenhum arquivo, mantém a lista completa em vez de importar zero candidatos silenciosamente.
+				if ( $filtered ) { $csv_names = $filtered; }
+				else { AE_Logger::write( 'warning', 'candidate_import_scope_no_match', array( 'ufs' => $ufs, 'job_id' => $job_id ) ); }
+			}
 			if ( isset( $csv_names[ $entry ] ) ) { $stream = $zip->getStream( $csv_names[ $entry ] ); }
 			if ( ! is_resource( $stream ) ) { $zip->close(); throw new RuntimeException( 'ZIP sem CSV de candidatos.' ); }
 		} else { $stream = fopen( $path, 'rb' ); }
@@ -257,18 +274,24 @@ final class AE_TSE_Client {
 		if ( ! is_array( $header ) || ! $header ) { fclose( $stream ); if ( $zip ) { $zip->close(); } throw new RuntimeException( 'CSV sem cabecalho.' ); }
 		$header = array_map( array( $this, 'utf8' ), $header );
 		$header[0] = preg_replace( '/^\xEF\xBB\xBF/', '', (string) $header[0] );
+		$cargo_key = array_search( 'CD_CARGO', $header, true );
 		for ( $skip = 0; $skip < $offset && false !== fgetcsv( $stream, 0, ';' ); $skip++ ) { }
-		$rows = array();
-		while ( count( $rows ) < 251 && false !== ( $line = fgetcsv( $stream, 0, ';' ) ) ) {
-			if ( count( $line ) === count( $header ) ) { $rows[] = array_combine( $header, array_map( array( $this, 'utf8' ), $line ) ); }
+		$rows = array(); $read = 0;
+		// $read conta linhas lidas do arquivo (base do cursor de offset); $rows so guarda as que passam no filtro de cargo.
+		while ( $read < 251 && false !== ( $line = fgetcsv( $stream, 0, ';' ) ) ) {
+			$read++;
+			if ( count( $line ) !== count( $header ) ) { continue; }
+			$row = array_combine( $header, array_map( array( $this, 'utf8' ), $line ) );
+			if ( $cargos && false !== $cargo_key && ! in_array( (string) $row[ $header[ $cargo_key ] ], $cargos, true ) ) { continue; }
+			$rows[] = $row;
 		}
-		$has_more_rows = count( $rows ) > 250;
-		if ( $has_more_rows ) { array_pop( $rows ); }
+		$has_more_rows = $read > 250;
+		if ( $has_more_rows ) { $read--; }
 		fclose( $stream ); if ( $zip ) { $zip->close(); }
 		if ( 'zip' === $format ) {
-			$next_cursor = $has_more_rows ? array( 'entry' => $entry, 'offset' => $offset + count( $rows ) ) : array( 'entry' => $entry + 1, 'offset' => 0 );
+			$next_cursor = $has_more_rows ? array( 'entry' => $entry, 'offset' => $offset + $read ) : array( 'entry' => $entry + 1, 'offset' => 0 );
 			$complete = ! $has_more_rows && $entry + 1 >= count( $csv_names );
-		} else { $next_cursor = array( 'offset' => $offset + count( $rows ) ); $complete = ! $has_more_rows; }
+		} else { $next_cursor = array( 'offset' => $offset + $read ); $complete = ! $has_more_rows; }
 		return array( 'rows' => $rows, 'complete' => $complete, 'cursor' => $next_cursor );
 	}
 

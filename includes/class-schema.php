@@ -2,7 +2,7 @@
 defined( 'ABSPATH' ) || exit;
 
 final class AE_Schema {
-	public const VERSION = '2.0.2';
+	public const VERSION = '2.0.3';
 
 	/** Checks both the migration marker and the physical tables before use. */
 	public static function is_ready(): bool {
@@ -98,6 +98,10 @@ final class AE_Schema {
 				percentage decimal(7,4) NOT NULL DEFAULT 0,
 				elected tinyint(1) NOT NULL DEFAULT 0,
 				situation varchar(80) NULL,
+				ballot_name varchar(191) NULL,
+				full_name varchar(191) NULL,
+				ballot_number varchar(20) NULL,
+				party varchar(30) NULL,
 				PRIMARY KEY  (snapshot_id,external_candidate_id),
 				KEY candidate (candidate_id),
 				KEY ranking (snapshot_id,rank_no)
