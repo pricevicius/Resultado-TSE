@@ -8,6 +8,7 @@ require_once AE_DIR . 'includes/class-tse-client.php';
 require_once AE_DIR . 'includes/class-tse-discovery.php';
 require_once AE_DIR . 'includes/class-results.php';
 require_once AE_DIR . 'includes/class-candidate-catalog.php';
+require_once AE_DIR . 'includes/class-navigation.php';
 require_once AE_DIR . 'includes/class-rest.php';
 require_once AE_DIR . 'includes/class-shortcodes.php';
 require_once AE_DIR . 'includes/class-admin.php';

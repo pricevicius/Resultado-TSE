@@ -9,7 +9,7 @@ final class AE_Admin {
 	public function register(): void {
 		add_action( 'admin_menu', array( $this, 'menu' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'assets' ) );
-		foreach ( array( 'sync_tse', 'quick_setup', 'save_contest', 'start_import', 'retry_job', 'run_jobs', 'save_sync_selection', 'wipe_test_data' ) as $action ) { add_action( 'admin_post_ae_' . $action, array( $this, $action ) ); }
+		foreach ( array( 'sync_tse', 'quick_setup', 'save_contest', 'start_import', 'retry_job', 'run_jobs', 'save_sync_selection', 'wipe_test_data', 'save_pages' ) as $action ) { add_action( 'admin_post_ae_' . $action, array( $this, $action ) ); }
 		add_action( 'wp_ajax_ae_admin_status', array( $this, 'ajax_status' ) );
 	}
 
@@ -43,6 +43,7 @@ final class AE_Admin {
 		<?php if ( '' === $site_uf ) : ?><div class="notice notice-warning inline" style="border-left:4px solid #d63638;padding:1px 12px;margin:0 0 16px;"><p><strong>Atenção:</strong> nenhuma UF configurada ainda. Sincronizando sem preencher o campo abaixo, <strong>toda disputa nova nasce ligada nas 27 UFs</strong> — a coleta automática e a importação de candidatos vão puxar o Brasil inteiro, não só o seu estado. Preencha a UF antes de sincronizar, a menos que este site cubra o país inteiro de propósito.</p></div><?php endif; ?>
 		<form action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post"><?php wp_nonce_field('ae_sync_tse'); ?><input type="hidden" name="action" value="ae_sync_tse"><label>Ambiente<select name="environment"><option value="oficial">Oficial</option><option value="simulado" selected>Simulado 2026</option></select></label><label>Ano<input name="year" type="number" min="2022" max="2100" value="2026" required></label><label>UF deste site<input name="uf" maxlength="2" style="text-transform:uppercase;width:4em" value="<?php echo esc_attr($site_uf); ?>" placeholder="ES"></label><button class="button button-primary button-hero">Sincronizar configuração do TSE</button><p class="description">Toda disputa nova nasce <strong>desligada</strong>, exceto as dessa UF e Presidente — evita puxar coleta e candidatos do Brasil inteiro sem querer. Disputas já existentes preservam o que você marcou em Seleção de disputas. Deixar em branco é permitido, mas volta ao comportamento antigo (tudo ligado).</p></form></section>
 		<section class="ae-panel"><h2>Configuração existente</h2><?php if(!$elections): ?><p>Nenhuma eleição.</p><?php else: ?><table class="widefat striped"><thead><tr><th>Eleição</th><th>Status</th><th>Disputas</th></tr></thead><tbody><?php foreach($elections as $e): ?><tr><td><strong><?php echo esc_html($e->name); ?></strong><br><code><?php echo esc_html($e->slug); ?></code></td><td><?php echo esc_html($e->status); ?></td><td><?php echo esc_html((string)$e->contests); ?></td></tr><?php endforeach; ?></tbody></table><?php endif; ?></section></div>
+		<?php $this->navigation_panel(); ?>
 		<?php $this->test_data_panel(); ?>
 		<section class="ae-panel"><details><summary><strong>Estrutura local para desenvolvimento</strong></summary><p>Cria uma eleição local sem fontes externas. Use para testar tela zerada e cenários controlados antes dos simulados.</p><form class="ae-form-grid" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post"><?php wp_nonce_field('ae_quick_setup'); ?><input type="hidden" name="action" value="ae_quick_setup"><label>Ano<input name="year" type="number" min="2022" max="2100" value="2026" required></label><label>Nome<input name="name" value="Eleições Gerais 2026" required></label><div><button class="button">Criar estrutura de teste</button></div></form></details></section>
 		<section class="ae-panel"><h2>Adicionar disputa personalizada</h2><form class="ae-form-grid" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post"><?php wp_nonce_field('ae_save_contest'); ?><input type="hidden" name="action" value="ae_save_contest"><?php $this->election_select('election_id',$elections); ?><label>Turno<input name="round_no" type="number" min="1" max="3" value="1" required></label><label>Código do cargo<input name="position_code" value="0001" required></label><label>Nome do cargo<input name="position_name" placeholder="Presidente" required></label><label>Tipo<select name="scope_type"><option value="BR">Brasil</option><option value="UF">Estado</option><option value="MU">Município</option></select></label><label>Código<input name="scope_code" placeholder="BR ou ES" required></label><label>Abrangência<input name="scope_name" placeholder="Brasil ou Espírito Santo" required></label><label>Vagas<input name="seats" type="number" min="1" value="1" required></label><div><button class="button button-primary">Adicionar disputa</button></div></form></section><?php $this->setup_guide(); ?><?php
@@ -55,10 +56,56 @@ final class AE_Admin {
 			<li><span>2</span><div><strong>Sincronize o ambiente</strong><p>Para homologar, escolha <em>Simulado 2026</em> e sincronize. Em produção, escolha <em>Oficial</em> somente quando o TSE publicar o catálogo daquele ambiente.</p></div></li>
 			<li><span>3</span><div><strong>Importe os candidatos</strong><p>Em <a href="<?php echo esc_url( $this->url( 'import' ) ); ?>">Importar e coletar</a>, escolha a eleição e inicie a importação. A fila processa o pacote oficial em lotes; acompanhe o resultado na aba Fila e progresso.</p></div></li>
 			<li><span>4</span><div><strong>Valide a apuração</strong><p>O simulado só responde nos horários divulgados pelo TSE. Verifique se surgiram snapshots válidos e se Presidente, Governador e Senado exibem dados na página de apuração.</p></div></li>
-			<li><span>5</span><div><strong>Publique</strong><p>Use <code>[tse_apuracao cargo="governador" uf="es"]</code> para um placar ou <code>[apuracao_candidatos]</code> para o catálogo. Visitantes consultam apenas este WordPress; a coleta do TSE ocorre no servidor com limite interno e cache condicional.</p></div></li>
+			<li><span>5</span><div><strong>Publique</strong><p>Use <code>[tse_apuracao cargo="governador" uf="es"]</code> para um placar ou <code>[apuracao_candidatos]</code> para o catálogo. Adicione <code>[apuracao_navegacao]</code> nas duas páginas para exibir o menu entre elas — configure as páginas na seção "Navegação" logo abaixo. Visitantes consultam apenas este WordPress; a coleta do TSE ocorre no servidor com limite interno e cache condicional.</p></div></li>
 		</ol>
 		<p class="description">Se a fila registrar 403 ou 429, aguarde a pausa de segurança de dez minutos e confira a aba Logs. Um 404 desativa somente a fonte inexistente, sem interromper os demais resultados.</p>
 		</section><?php
+	}
+
+	/** Resolve o menu Apuração/Candidatos por ID de página, não por URL fixa — sobrevive a mudança de slug feita pela redação. */
+	private function navigation_panel(): void {
+		$results_id    = (int) get_option( AE_Navigation::OPTION_RESULTS );
+		$candidates_id = (int) get_option( AE_Navigation::OPTION_CANDIDATES );
+		?><section class="ae-panel"><h2>Navegação entre Apuração e Candidatos</h2>
+		<p class="description">Escolha as páginas onde estão publicados <code>[apuracao ...]</code> e <code>[apuracao_candidatos]</code>. Depois, use <code>[apuracao_navegacao]</code> em ambas para exibir o menu — ele monta os links pelo ID da página, então continua funcionando se o slug mudar.</p>
+		<form class="ae-form-grid" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="post">
+		<?php wp_nonce_field( 'ae_save_pages' ); ?>
+		<input type="hidden" name="action" value="ae_save_pages">
+		<label>Página de Apuração
+		<?php
+		wp_dropdown_pages( array(
+			'name'              => 'results_page_id',
+			'selected'          => $results_id,
+			'show_option_none'  => 'Selecione...',
+			'option_none_value' => '0',
+		) );
+		?>
+		</label>
+		<label>Página de Candidatos
+		<?php
+		wp_dropdown_pages( array(
+			'name'              => 'candidates_page_id',
+			'selected'          => $candidates_id,
+			'show_option_none'  => 'Selecione...',
+			'option_none_value' => '0',
+		) );
+		?>
+		</label>
+		<div><button class="button button-primary">Salvar navegação</button></div>
+		</form>
+		</section><?php
+	}
+
+	public function save_pages(): void {
+		$this->verify( 'ae_save_pages' );
+		$results_id    = absint( $_POST['results_page_id'] ?? 0 );
+		$candidates_id = absint( $_POST['candidates_page_id'] ?? 0 );
+		if ( $results_id && 'page' !== get_post_type( $results_id ) ) { $results_id = 0; }
+		if ( $candidates_id && 'page' !== get_post_type( $candidates_id ) ) { $candidates_id = 0; }
+		update_option( AE_Navigation::OPTION_RESULTS, $results_id );
+		update_option( AE_Navigation::OPTION_CANDIDATES, $candidates_id );
+		AE_Logger::write( 'info', 'navigation_pages_saved', array( 'results_page_id' => $results_id, 'candidates_page_id' => $candidates_id ) );
+		$this->redirect( 'setup', 'Navegação salva.' );
 	}
 
 	/** Simulado nunca tem valor legal (nem se converte em Oficial); tudo sob esse ambiente é dado de teste, apagável de um clique. */
