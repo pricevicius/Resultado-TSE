@@ -32,6 +32,7 @@ final class AE_Slack_Report {
 
 		$health = self::collect_health();
 		if ( 0 === $health['elections'] ) { return; } // Nada sincronizado ainda: nada a reportar.
+		if ( 0 === $health['contests'] ) { return; } // Sem disputa ativa não há coleta a monitorar: só ruído.
 
 		self::maybe_send_alert( $webhook, $health );
 		self::maybe_send_snapshot( $webhook, $health );
