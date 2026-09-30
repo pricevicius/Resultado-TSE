@@ -155,12 +155,15 @@ final class AE_Job_Runner {
 		try {
 			$payload = json_decode( $job->payload_json, true, 512, JSON_THROW_ON_ERROR );
 			$cursor = $job->cursor_json ? json_decode( $job->cursor_json, true, 512, JSON_THROW_ON_ERROR ) : array();
-			$done = match ( $job->type ) {
-				'import_candidates' => AE_TSE_Client::instance()->import_candidates_page( $payload, $cursor, $job->id ),
-				'collect_results' => AE_TSE_Client::instance()->collect_results( $payload ),
-				'sync_tse' => AE_TSE_Discovery::sync( $payload ),
-				default => throw new RuntimeException( 'Unsupported job type: ' . $job->type ),
-			};
+			if ( 'import_candidates' === $job->type ) {
+				$done = AE_TSE_Client::instance()->import_candidates_page( $payload, $cursor, $job->id );
+			} elseif ( 'collect_results' === $job->type ) {
+				$done = AE_TSE_Client::instance()->collect_results( $payload );
+			} elseif ( 'sync_tse' === $job->type ) {
+				$done = AE_TSE_Discovery::sync( $payload );
+			} else {
+				throw new RuntimeException( 'Unsupported job type: ' . $job->type );
+			}
 			$this->finish( $job, $done );
 		} catch ( Throwable $e ) {
 			$this->retry_or_fail( $job, $e );

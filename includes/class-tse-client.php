@@ -120,7 +120,7 @@ final class AE_TSE_Client {
 		if ( in_array( $code, array( 403, 429 ), true ) ) { update_option( 'ae_tse_blocked_until', time() + 10 * MINUTE_IN_SECONDS, false ); }
 		if ( 200 !== $code ) { throw new RuntimeException( 'TSE respondeu HTTP ' . $code . '; novas tentativas foram desaceleradas.' ); }
 		update_option( $key, array( 'etag' => wp_remote_retrieve_header( $response, 'etag' ), 'last_modified' => wp_remote_retrieve_header( $response, 'last-modified' ) ), false );
-		try { $data = json_decode( wp_remote_retrieve_body( $response ), true, 512, JSON_THROW_ON_ERROR ); return is_array( $data ) ? $data : throw new RuntimeException( 'JSON TSE sem objeto raiz.' ); } catch ( JsonException $e ) { throw new RuntimeException( 'JSON TSE inválido.' ); }
+		try { $data = json_decode( wp_remote_retrieve_body( $response ), true, 512, JSON_THROW_ON_ERROR ); if ( ! is_array( $data ) ) { throw new RuntimeException( 'JSON TSE sem objeto raiz.' ); } return $data; } catch ( JsonException $e ) { throw new RuntimeException( 'JSON TSE inválido.' ); }
 	}
 
 	private function get_json( string $url ): array { return $this->fetch_json( $url, false ) ?? array(); }
@@ -226,12 +226,12 @@ final class AE_TSE_Client {
 		update_option( 'ae_tse_last_request_at', microtime( true ), false );
 	}
 
-	private function integer( mixed $value ): int {
+	private function integer( $value ): int {
 		$digits = preg_replace( '/[^0-9-]/', '', (string) $value );
 		return is_string( $digits ) && '' !== $digits ? (int) $digits : 0;
 	}
 
-	private function decimal( mixed $value ): float { return (float) str_replace( ',', '.', (string) $value ); }
+	private function decimal( $value ): float { return (float) str_replace( ',', '.', (string) $value ); }
 
 	/** Reads only the requested page from a staged CSV/ZIP, so a cron retry resumes by line. */
 	private function read_open_data_batch( string $url, string $format, array $cursor, int $job_id, array $ufs = array(), array $cargos = array() ): array {
@@ -301,7 +301,7 @@ final class AE_TSE_Client {
 		delete_transient( $key );
 	}
 
-	private function utf8( mixed $value ): string {
+	private function utf8( $value ): string {
 		$value = (string) $value;
 		if ( function_exists( 'mb_check_encoding' ) && ! mb_check_encoding( $value, 'UTF-8' ) ) { return mb_convert_encoding( $value, 'UTF-8', 'Windows-1252,ISO-8859-1' ); }
 		return $value;
@@ -311,7 +311,7 @@ final class AE_TSE_Client {
 		$host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
 		return 'https' === wp_parse_url( $url, PHP_URL_SCHEME ) && ( 'tse.jus.br' === $host || str_ends_with( $host, '.tse.jus.br' ) );
 	}
-	private function date_or_null( mixed $value ): ?string {
+	private function date_or_null( $value ): ?string {
 		$value = trim( (string) $value );
 		foreach ( array( 'd/m/Y H:i:s', 'd/m/Y', DATE_RFC3339, 'Y-m-d H:i:s' ) as $format ) {
 			$date = DateTimeImmutable::createFromFormat( '!' . $format, $value, new DateTimeZone( 'America/Sao_Paulo' ) );
