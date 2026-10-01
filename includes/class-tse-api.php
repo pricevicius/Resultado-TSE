@@ -192,7 +192,7 @@ class TSE_API {
             ];
         }
 
-        usort( $cands, fn( $a, $b ) => $b['votos'] <=> $a['votos'] );
+        usort( $cands, function ( $a, $b ) { return $b['votos'] <=> $a['votos']; });
 
         // pst = % seções apuradas; vem como número (100.00) ou string ("87,42%")
         $pst_raw = $raw['pst'] ?? $raw['pa'] ?? '';
