@@ -14,7 +14,7 @@ A fonte é o **repositório do plugin**, em `.claude/skills/tse-apuracao/`, e el
 ## Primeiro passo: localizar o plugin no projeto
 
 1. Procure `tse-apuracao.php` (cabeçalho `Plugin Name: TSE Apuração`), normalmente em `wp-content/plugins/tse-apuracao/`. Pode ser pasta comum ou submódulo git.
-2. Se existir, **leia o `README.md` e o `DOCUMENTACAO-PLUGIN-APURACAO.md` do próprio plugin**: são a fonte de verdade da versão que está clonada e podem estar mais novos que esta skill. Em caso de conflito, o código e a doc do plugin vencem.
+2. Se existir, **leia o `README.md` e o `docs/README.md` (índice) do próprio plugin, em especial `docs/arquitetura.md`**: são a fonte de verdade da versão que está clonada e podem estar mais novos que esta skill. Em caso de conflito, o código e a doc do plugin vencem.
 3. Veja a versão no cabeçalho do plugin e o que há em `includes/`, `bin/`, `blocks/`, `templates/`, `tests/`.
 4. Se não existir, o plugin precisa ser trazido para `wp-content/plugins/` antes (clone do repositório do plugin) e ativado.
 
