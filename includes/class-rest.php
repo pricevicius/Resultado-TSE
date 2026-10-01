@@ -2,16 +2,16 @@
 defined( 'ABSPATH' ) || exit;
 
 final class AE_REST {
-	private static ?AE_REST $instance = null;
-	public static function instance(): AE_REST { return self::$instance ??= new self(); }
+	private static $instance = null;
+	public static function instance(): AE_REST { if ( null === self::$instance ) { self::$instance = new self(); } return self::$instance; }
 
 	public function register_routes(): void {
-		register_rest_route( 'apuracao/v1', '/results/(?P<election>[a-z0-9-]+)/(?P<round>\d+)/(?P<position>[A-Za-z0-9_-]+)/(?P<scope>[A-Za-z0-9_-]+)', array( 'methods' => WP_REST_Server::READABLE, 'callback' => array( $this, 'results' ), 'permission_callback' => '__return_true', 'args' => array( 'round' => array( 'validate_callback' => static fn( $v ) => absint( $v ) > 0 ) ) ) );
+		register_rest_route( 'apuracao/v1', '/results/(?P<election>[a-z0-9-]+)/(?P<round>\d+)/(?P<position>[A-Za-z0-9_-]+)/(?P<scope>[A-Za-z0-9_-]+)', array( 'methods' => WP_REST_Server::READABLE, 'callback' => array( $this, 'results' ), 'permission_callback' => '__return_true', 'args' => array( 'round' => array( 'validate_callback' => static function ( $v ) { return absint( $v ) > 0; }) ) ) );
 		register_rest_route( 'apuracao/v1', '/candidates/(?P<election>[a-z0-9-]+)/(?P<candidate>[A-Za-z0-9_-]+)', array( 'methods' => WP_REST_Server::READABLE, 'callback' => array( $this, 'candidate' ), 'permission_callback' => '__return_true' ) );
-		register_rest_route( 'apuracao/v1', '/admin/jobs', array( 'methods' => WP_REST_Server::CREATABLE, 'callback' => array( $this, 'enqueue' ), 'permission_callback' => static fn() => current_user_can( 'manage_options' ) ) );
-		register_rest_route( 'apuracao/v1', '/admin/elections', array( 'methods' => WP_REST_Server::CREATABLE, 'callback' => array( $this, 'save_election' ), 'permission_callback' => static fn() => current_user_can( 'manage_options' ) ) );
-		register_rest_route( 'apuracao/v1', '/admin/contests', array( 'methods' => WP_REST_Server::CREATABLE, 'callback' => array( $this, 'save_contest' ), 'permission_callback' => static fn() => current_user_can( 'manage_options' ) ) );
-		register_rest_route( 'apuracao/v1', '/admin/health', array( 'methods' => WP_REST_Server::READABLE, 'callback' => array( $this, 'health' ), 'permission_callback' => static fn() => current_user_can( 'manage_options' ) ) );
+		register_rest_route( 'apuracao/v1', '/admin/jobs', array( 'methods' => WP_REST_Server::CREATABLE, 'callback' => array( $this, 'enqueue' ), 'permission_callback' => static function () { return current_user_can( 'manage_options' ); }) );
+		register_rest_route( 'apuracao/v1', '/admin/elections', array( 'methods' => WP_REST_Server::CREATABLE, 'callback' => array( $this, 'save_election' ), 'permission_callback' => static function () { return current_user_can( 'manage_options' ); }) );
+		register_rest_route( 'apuracao/v1', '/admin/contests', array( 'methods' => WP_REST_Server::CREATABLE, 'callback' => array( $this, 'save_contest' ), 'permission_callback' => static function () { return current_user_can( 'manage_options' ); }) );
+		register_rest_route( 'apuracao/v1', '/admin/health', array( 'methods' => WP_REST_Server::READABLE, 'callback' => array( $this, 'health' ), 'permission_callback' => static function () { return current_user_can( 'manage_options' ); }) );
 	}
 
 	public function results( WP_REST_Request $request ): WP_REST_Response {

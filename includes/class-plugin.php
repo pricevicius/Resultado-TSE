@@ -17,10 +17,10 @@ require_once AE_DIR . 'includes/class-admin-guide.php';
 require_once AE_DIR . 'includes/class-admin.php';
 
 final class AE_Plugin {
-	private static ?AE_Plugin $instance = null;
+	private static $instance = null;
 
 	public static function instance(): AE_Plugin {
-		return self::$instance ??= new self();
+		if ( null === self::$instance ) { self::$instance = new self(); } return self::$instance;
 	}
 
 	/**
