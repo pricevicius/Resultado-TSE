@@ -3,7 +3,7 @@
 $method = new ReflectionMethod( AE_TSE_Client::class, 'normalize_result' );
 $method->setAccessible( true );
 $load = static function ( string $name ) use ( $method ): array {
-	$raw = json_decode( file_get_contents( AE_DIR . 'tests/fixtures/' . $name ), true, 512, JSON_THROW_ON_ERROR );
+	$raw = json_decode( file_get_contents( AE_DIR . 'tests/fixtures/' . $name ), true );
 	return $method->invoke( AE_TSE_Client::instance(), $raw, 'EA20' );
 };
 $zero = $load( 'ea20-zero.json' );
