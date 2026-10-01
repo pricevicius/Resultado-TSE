@@ -2,8 +2,8 @@
 defined( 'ABSPATH' ) || exit;
 
 final class AE_Results {
-	private static ?AE_Results $instance = null;
-	public static function instance(): AE_Results { return self::$instance ??= new self(); }
+	private static $instance = null;
+	public static function instance(): AE_Results { if ( null === self::$instance ) { self::$instance = new self(); } return self::$instance; }
 
 	public function latest( string $election_slug, int $round, string $position, string $scope ): ?array {
 		global $wpdb; $p = $wpdb->prefix . 'ae_';

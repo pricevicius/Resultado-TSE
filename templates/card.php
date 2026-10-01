@@ -16,7 +16,7 @@ $status       = $dados['status'] ?? '';
 $atrasado     = ! empty( $dados['atrasado'] );
 
 /** 'percentual' vem formatado ("12,85%") para exibicao; largura de barra precisa de numero puro (ponto). */
-$barra_pct = static fn( array $c ): float => (float) str_replace( ',', '.', rtrim( (string) $c['percentual'], '% ' ) );
+$barra_pct = static function ( array $c ): float { return (float) str_replace( ',', '.', rtrim( (string) $c['percentual'], '% ' ) ); };
 
 $badge = static function ( array $c ) use ( $status ): string {
 	if ( $c['eleito'] ) { return '<span class="tse-badge-eleito">Eleito</span>'; }

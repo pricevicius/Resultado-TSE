@@ -6,8 +6,8 @@ final class AE_TSE_Source_Not_Found extends RuntimeException {}
 
 /** Transport and normalization boundary. No visitor request invokes this class. */
 final class AE_TSE_Client {
-	private static ?AE_TSE_Client $instance = null;
-	public static function instance(): AE_TSE_Client { return self::$instance ??= new self(); }
+	private static $instance = null;
+	public static function instance(): AE_TSE_Client { if ( null === self::$instance ) { self::$instance = new self(); } return self::$instance; }
 
 	public function import_candidates_page( array $payload, array $cursor, int $job_id ): array {
 		$url = esc_url_raw( $payload['source_url'] ?? '' ); $election_id = absint( $payload['election_id'] ?? 0 );
@@ -15,8 +15,8 @@ final class AE_TSE_Client {
 		$offset = absint( $cursor['offset'] ?? 0 );
 		$format = strtolower( sanitize_key( $payload['format'] ?? pathinfo( (string) wp_parse_url( $url, PHP_URL_PATH ), PATHINFO_EXTENSION ) ) );
 		// Escopo vem das disputas marcadas em "Seleção de disputas" (AE_Admin::start_import) — nunca digitado à mão.
-		$ufs = array_map( static fn( $v ) => strtoupper( substr( sanitize_key( (string) $v ), 0, 2 ) ), (array) ( $payload['ufs'] ?? array() ) );
-		$cargos = array_map( static fn( $v ) => (string) absint( $v ), (array) ( $payload['cargos'] ?? array() ) );
+		$ufs = array_map( static function ( $v ) { return strtoupper( substr( sanitize_key( (string) $v ), 0, 2 ) ); }, (array) ( $payload['ufs'] ?? array() ) );
+		$cargos = array_map( static function ( $v ) { return (string) absint( $v ); }, (array) ( $payload['cargos'] ?? array() ) );
 		if ( in_array( $format, array( 'csv', 'zip' ), true ) ) {
 			$batch_data = $this->read_open_data_batch( $url, $format, $cursor, $job_id, $ufs, $cargos );
 			$batch = $batch_data['rows']; $complete = $batch_data['complete'];
@@ -94,7 +94,7 @@ final class AE_TSE_Client {
 	private const HOLDER_POSITIONS = array( '1', '3', '5', '6', '7', '8' );
 
 	/** @var array<string,int> Cache por importação: cargo|UF|turno => id da disputa (0 = não existe). */
-	private array $contest_lookup = array();
+	private $contest_lookup = array();
 
 	/**
 	 * Descobre a disputa de um candidato do CSV pelo cargo, UF e turno. Presidente é nacional (BR);
@@ -217,7 +217,7 @@ final class AE_TSE_Client {
 		if ( in_array( $code, array( 403, 429 ), true ) ) { update_option( 'ae_tse_blocked_until', time() + 10 * MINUTE_IN_SECONDS, false ); }
 		if ( 200 !== $code ) { throw new RuntimeException( 'TSE respondeu HTTP ' . $code . '; novas tentativas foram desaceleradas.' ); }
 		update_option( $key, array( 'etag' => wp_remote_retrieve_header( $response, 'etag' ), 'last_modified' => wp_remote_retrieve_header( $response, 'last-modified' ) ), false );
-		try { $data = json_decode( wp_remote_retrieve_body( $response ), true, 512, JSON_THROW_ON_ERROR ); if ( ! is_array( $data ) ) { throw new RuntimeException( 'JSON TSE sem objeto raiz.' ); } return $data; } catch ( JsonException $e ) { throw new RuntimeException( 'JSON TSE inválido.' ); }
+		$data = json_decode( wp_remote_retrieve_body( $response ), true ); if ( JSON_ERROR_NONE !== json_last_error() ) { throw new RuntimeException( 'JSON TSE inválido.' ); } if ( ! is_array( $data ) ) { throw new RuntimeException( 'JSON TSE sem objeto raiz.' ); } return $data;
 	}
 
 	private function get_json( string $url ): array { return $this->fetch_json( $url, false ) ?? array(); }
@@ -316,7 +316,7 @@ final class AE_TSE_Client {
 		}
 		$table = $p . 'candidates';
 		$existing = array();
-		foreach ( array_chunk( array_map( static fn( array $c ): string => (string) $c['external_id'], $candidates ), 500 ) as $chunk ) {
+		foreach ( array_chunk( array_map( static function ( array $c ): string { return (string) $c['external_id']; }, $candidates ), 500 ) as $chunk ) {
 			$marks = implode( ',', array_fill( 0, count( $chunk ), '%s' ) );
 			$found = $wpdb->get_results( $wpdb->prepare( "SELECT id,external_id,contest_id,ballot_name,full_name,ballot_number,party,situation,photo_url FROM {$table} WHERE election_id=%d AND external_id IN ({$marks})", array_merge( array( $election_id ), $chunk ) ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared
 			foreach ( (array) $found as $row ) { $existing[ (string) $row['external_id'] ] = $row; }
@@ -334,7 +334,7 @@ final class AE_TSE_Client {
 			if ( $current ) {
 				$kept = $contest_info[ (int) $current['contest_id'] ] ?? null;
 				if ( $kept && $this_contest && $kept['position'] === $this_contest['position'] && $kept['scope'] === $this_contest['scope'] && $kept['round'] < $this_contest['round'] ) { unset( $data['contest_id'] ); }
-				$changes = array_filter( $data, static fn( $value ) => null !== $value && '' !== $value );
+				$changes = array_filter( $data, static function ( $value ) { return null !== $value && '' !== $value; });
 				foreach ( $changes as $field => $value ) { if ( (string) $current[ $field ] === (string) $value ) { unset( $changes[ $field ] ); } }
 				if ( $changes ) { $wpdb->update( $table, $changes + array( 'updated_at' => $now ), array( 'id' => (int) $current['id'] ) ); }
 				$ids[ $external ] = (int) $current['id'];
@@ -432,8 +432,8 @@ final class AE_TSE_Client {
 				// O pacote de Dados Abertos do TSE traz um CSV por UF dentro do ZIP (ex.: consulta_cand_2026_ES.csv). Presidente (cargo 1) fica num arquivo à parte (BR/BRASIL).
 				$patterns = $ufs;
 				if ( in_array( '1', $cargos, true ) ) { $patterns = array_merge( $patterns, array( 'BR', 'BRASIL' ) ); }
-				$regex = '/_(' . implode( '|', array_map( static fn( $p ) => preg_quote( $p, '/' ), $patterns ) ) . ')\.csv$/i';
-				$filtered = array_values( array_filter( $csv_names, static fn( $name ) => (bool) preg_match( $regex, $name ) ) );
+				$regex = '/_(' . implode( '|', array_map( static function ( $p ) { return preg_quote( $p, '/' ); }, $patterns ) ) . ')\.csv$/i';
+				$filtered = array_values( array_filter( $csv_names, static function ( $name ) use ( $regex ) { return (bool) preg_match( $regex, $name ); }) );
 				// Se o padrão de nome não bater com nenhum arquivo, mantém a lista completa em vez de importar zero candidatos silenciosamente.
 				if ( $filtered ) { $csv_names = $filtered; }
 				else { AE_Logger::write( 'warning', 'candidate_import_scope_no_match', array( 'ufs' => $ufs, 'job_id' => $job_id ) ); }
