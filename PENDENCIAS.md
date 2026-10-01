@@ -34,7 +34,6 @@ Os testes de coleta foram verificados também no sentido contrário: tirando de 
 **Ainda não exercitado:**
 - o comportamento do **TSE de verdade**: tempo de rede, bloqueio por IP, formato exato dos arquivos de hoje (não há mais simulado; o `tests/wp-collect.php` reproduz o formato documentado, não o tráfego real);
 - a importação do **ZIP** real: o container local não tem `php-zip`, então os testes usam CSV (mesmo caminho de leitura e marcação, sem a abertura do ZIP);
-- a branch **`php7.4`**: a 2.5.0 não foi executada nela (ver E);
 - o **JavaScript no navegador de verdade**: a lógica do `tse-resumo.js` foi testada em Node com um DOM mínimo (`tests/js/resumo-dom.test.js`), não num navegador; vale olhar o `[tse_apuracao_resumo]` numa página real (layout, tema e celular);
 - **concorrência e carga**: vários workers ao mesmo tempo, muitas UFs ligadas, picos de leitores na REST.
 
