@@ -13,7 +13,7 @@ $p = $wpdb->prefix . 'ae_';
 $mode = (string) getenv( 'TSE_CONC_MODE' );
 $n_contests = 24;
 $state_file = sys_get_temp_dir() . '/ae-conc-state.json';
-$url_for = static fn( int $i ): string => 'https://resultados.tse.jus.br/oficial/ele2026/9999/dados/zc/zc-c0003-e0099' . sprintf( '%02d', $i ) . '-u.json';
+$url_for = static function ( int $i ): string { return 'https://resultados.tse.jus.br/oficial/ele2026/9999/dados/zc/zc-c0003-e0099' . sprintf( '%02d', $i ) . '-u.json'; };
 
 if ( 'setup' === $mode ) {
 	$now = current_time( 'mysql', true );
@@ -76,7 +76,7 @@ $check = static function ( string $name, bool $ok, string $detail = '' ) use ( &
 };
 if ( 'check' === $mode ) {
 	$n = count( $ids );
-	$workers = array_filter( array_map( static fn( $f ) => json_decode( (string) file_get_contents( $f ), true ), glob( sys_get_temp_dir() . '/ae-conc-worker-*.json' ) ?: array() ) );
+	$workers = array_filter( array_map( static function ( $f ) { return json_decode( (string) file_get_contents( $f ), true ); }, glob( sys_get_temp_dir() . '/ae-conc-worker-*.json' ) ?: array() ) );
 	$total_ran = array_sum( array_column( $workers, 'ran' ) );
 	$check( 'quatro workers rodaram', count( $workers ) >= 4, (string) count( $workers ) );
 	$check( "cada um dos $n jobs foi executado uma única vez (soma dos workers)", $n === $total_ran, (string) $total_ran );
@@ -87,10 +87,10 @@ if ( 'check' === $mode ) {
 	$rows = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}result_rows r JOIN {$p}snapshots s ON s.id=r.snapshot_id WHERE s.contest_id IN ({$id_list})" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	$check( 'ranking completo: 12 linhas por snapshot', 12 * $n === $rows, (string) $rows );
 	$jobs = $wpdb->get_results( "SELECT state,attempts FROM {$p}jobs WHERE type='collect_results' AND payload_json REGEXP '\"contest_id\":(" . implode( '|', $ids ) . ")[,}]'" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-	$check( 'todos os jobs terminaram "completed"', $n === count( $jobs ) && ! array_filter( $jobs, static fn( $j ) => 'completed' !== $j->state ) );
-	$check( 'nenhum job foi tentado mais de uma vez', ! array_filter( $jobs, static fn( $j ) => (int) $j->attempts !== 1 ) );
+	$check( 'todos os jobs terminaram "completed"', $n === count( $jobs ) && ! array_filter( $jobs, static function ( $j ) { return 'completed' !== $j->state; }) );
+	$check( 'nenhum job foi tentado mais de uma vez', ! array_filter( $jobs, static function ( $j ) { return (int) $j->attempts !== 1; }) );
 	$intervals = array(); foreach ( $workers as $w ) { foreach ( $w['holds'] as $h ) { $intervals[] = $h; } }
-	usort( $intervals, static fn( $a, $b ) => $a[0] <=> $b[0] );
+	usort( $intervals, static function ( $a, $b ) { return $a[0] <=> $b[0]; });
 	$overlap = 0; for ( $i = 1; $i < count( $intervals ); $i++ ) { if ( $intervals[ $i ][0] < $intervals[ $i - 1 ][1] - 0.005 ) { $overlap++; } }
 	$check( 'o lock nunca foi segurado por dois processos ao mesmo tempo', 0 === $overlap, (string) $overlap . ' sobreposições em ' . count( $intervals ) . ' turnos' );
 	$check( 'mais de um worker de fato trabalhou (a disputa pela fila aconteceu)', count( array_filter( array_column( $workers, 'ran' ) ) ) >= 2, wp_json_encode( array_column( $workers, 'ran' ) ) );
