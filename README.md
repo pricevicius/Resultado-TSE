@@ -16,6 +16,15 @@ Plugin WordPress para importar candidatos e publicar resultados eleitorais do TS
 
 Não é necessário informar URL, código de pleito ou código de eleição. O plugin lê o EA11 oficial e monta as fontes EA20. Os visitantes consultam somente a API REST do WordPress; o TSE é acessado exclusivamente pela fila do servidor.
 
+## Catálogo de candidatos
+
+```text
+[apuracao_candidatos]
+[apuracao_candidatos por_pagina="24"]
+```
+
+Lista os candidatos importados, com busca por nome/número e filtros de cargo, UF e partido. É **paginado**: 24 por página por padrão, com "Anterior / 1 2 3 … / Próxima" abaixo da lista. Ao buscar ou trocar de página, o navegador desce direto para a lista. Quando o resultado cabe numa página só, a navegação não aparece. Se a paginação não aparecer, veja "Catálogo de candidatos: paginação" na documentação completa.
+
 ## Cargos do shortcode
 
 `presidente`, `governador`, `senador`, `deputado-federal`, `deputado-estadual`, `deputado-distrital`, `prefeito` e `vereador`.
