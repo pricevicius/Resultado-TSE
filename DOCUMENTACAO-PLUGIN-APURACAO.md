@@ -4,7 +4,7 @@
 
 Este é o runbook técnico e funcional do plugin. Ele registra o que foi implementado, o que foi decidido e o que ainda está planejado. Toda mudança que altere fonte, contrato JSON, frequência, cache, fila, interface administrativa ou publicação deve atualizar este arquivo.
 
-Última revisão: 01/10/2026 (versão 2.5.1, que torna a extensão `php-zip` requisito de ativação). Desde 28/09: saúde do disparo da coleta (2.3.8), marcadores `#NE` e vínculo do candidato com a disputa (2.3.8), intervalo por tipo de disputa, Slack removido e snapshot em transação (2.4.0), paginação do catálogo (2.4.1), candidatos que saem do CSV, reimportação agendada, avisos de saúde, gravação do snapshot em lote e testes em WordPress real (2.5.0).
+Última revisão: 01/10/2026 (versão 2.6.0: vínculo candidato × disputa por turno, medição de tempo da coleta, testes de ZIP, concorrência e carga; antes, a 2.5.1 tornou a extensão `php-zip` requisito de ativação). Desde 28/09: saúde do disparo da coleta (2.3.8), marcadores `#NE` e vínculo do candidato com a disputa (2.3.8), intervalo por tipo de disputa, Slack removido e snapshot em transação (2.4.0), paginação do catálogo (2.4.1), candidatos que saem do CSV, reimportação agendada, avisos de saúde, gravação do snapshot em lote e testes em WordPress real (2.5.0).
 
 **O que ainda está em aberto** (código, validação parcial, implantação por projeto e decisões já tomadas) está em [PENDENCIAS.md](PENDENCIAS.md).
 
@@ -125,7 +125,7 @@ O botão deriva o ano da eleição e usa o pacote oficial `consulta_cand_{ANO}.z
 - lê por streaming e lotes de 250 linhas (contra o arquivo, não contra as linhas já filtradas — o cursor de retomada continua consistente mesmo descartando linha por cargo);
 - salva cursor de arquivo + linha para retomada;
 - importa `SQ_CANDIDATO`, nomes, número, partido e situação;
-- **vincula o candidato à disputa** (`ae_candidates.contest_id`) por cargo + UF + turno do CSV, na própria importação (Presidente é `BR`; Deputado Distrital é a disputa `0008` do DF). Com isso os filtros de cargo e UF do catálogo funcionam antes de a apuração começar. Reimportar preenche os candidatos já existentes, e a importação nunca apaga um vínculo que o EA20 já tenha gravado;
+- **vincula o candidato à disputa** (`ae_candidates.contest_id` e a tabela `ae_candidate_contests`, ver [Versão 2.6.0](#versão-260--turnos-medição-da-coleta-e-testes-de-carga)) por cargo + UF + turno do CSV, na própria importação (Presidente é `BR`; Deputado Distrital é a disputa `0008` do DF). Com isso os filtros de cargo e UF do catálogo funcionam antes de a apuração começar. Reimportar preenche os candidatos já existentes, e a importação nunca apaga um vínculo que o EA20 já tenha gravado;
 - permite que o EA20 complete candidatos ausentes e derive a foto oficial por `sqcand`.
 
 **Dependência de ambiente (requisito de instalação, desde a 2.5.1):** requer a extensão `php-zip` (`ZipArchive`). A ativação do plugin é **recusada** com uma mensagem explicando o que instalar (`AE_Plugin::missing_requirements()`, chamada pelo hook de ativação); se a extensão desaparecer depois, as telas do admin mostram um aviso permanente e a REST de saúde lista `missing_requirements`. Para desenvolvimento ou teste, `TSE_APURACAO_ALLOW_NO_ZIP` no `wp-config.php` (ou o filtro `ae_missing_requirements`) dispensa a verificação. Confirmar no `docker/Dockerfile` local (`php8.2-zip`) e em homolog/produção.
@@ -925,6 +925,93 @@ Docker local, sem rede, sem concorrência: coleta de Deputado Federal com 1.100 
 ~1.275 ms, antes de tirar `DISTINCT` e `data_json` da consulta); filtros por cargo+UF ~50–75 ms; busca por
 nome ~200 ms; páginas muito profundas sem filtro ~500 ms. Isso é latência local: em produção o banco tem
 latência de rede, e é por isso que o número de queries importa mais que os milissegundos.
+
+## Versão 2.6.0 — turnos, medição da coleta e testes de carga
+
+**Esquema 2.1.0.** Nova tabela `ae_candidate_contests (candidate_id, contest_id)`, com chave primária nos dois campos. O
+mesmo candidato disputa o 1º e o 2º turno, que são **disputas diferentes** (`ae_contests.round_no`), e `ae_candidates.contest_id`
+só guarda uma. A regra agora é:
+
+- `ae_candidates.contest_id` é a **disputa de referência**: a do menor turno. O EA20 do 2º turno **não** a move para o 2º
+  turno (antes ela trocava de disputa a cada coleta do 2º turno e voltava a cada reimportação do CSV, que é do 1º turno).
+  Só se move para corrigir uma ligação errada dentro do mesmo turno, ou quando o candidato ainda não tinha disputa.
+  Candidato que só existe no 2º turno nasce ligado à disputa do 2º turno.
+- `ae_candidate_contests` guarda **todas** as disputas do candidato. A importação do CSV e o EA20 gravam os vínculos em lote
+  (`INSERT IGNORE`, uma query por 200 candidatos). A migração (`dbDelta`) cria a tabela sozinha e copia os vínculos que já
+  existiam em `ae_candidates.contest_id`; é idempotente.
+- O perfil do candidato mostra **"Turnos disputados: 1º e 2º turno"** quando há mais de um. O ranking, a REST e os shortcodes
+  não mudam (leem `ae_result_rows` pela disputa do próprio turno). A limpeza do Simulado e o `uninstall.php` também tratam a tabela nova.
+
+Por que fazer agora: com a eleição ainda sem coleta oficial, a tabela nasce junto com os candidatos importados, sem dado vivo
+para migrar e com meses de folga antes do 2º turno (25/10). O custo é uma query a mais por 200 candidatos na coleta.
+
+**Importação: linha duplicada por página.** A linha 251 de cada lote (usada só para saber que há mais páginas) era processada e
+a seguinte página a lia de novo. Nenhum candidato duplicava (o upsert é idempotente), mas `ae_last_import.rows` saía maior que o
+real (achado pelo teste do ZIP: 305 linhas para 304 candidatos). Corrigido.
+
+**Medição da coleta (A10).** `AE_Perf` (`includes/class-perf.php`) guarda as últimas 300 amostras (opção `ae_perf_samples`):
+tempo do download ao TSE (`fetch`, com o código HTTP), da coleta de uma disputa inteira (`job`) e do tempo que cada tick segura
+o lock (`tick`, só os que trabalharam). A Visão geral mostra média, p95 e máximo, e a REST de saúde traz o campo `perf`. É o
+dado que falta para decidir o intervalo de 120 s e o A2: aparece nas primeiras coletas oficiais.
+
+**Simulado.** O caminho do simulado do TSE passou a ser filtrável (`ae_tse_simulation_path`, padrão `simulado/simulado2026`).
+O atributo `eleicao` do bloco e do `[apuracao]` legado não é usado na renderização (o cargo e a UF decidem); o padrão
+`eleicoes-2026` fica como está para não alterar blocos já salvos.
+
+### Medições locais (2.6.0)
+
+Docker local, sem rede (TSE falso), `tests/wp-latency.php`:
+
+| Disputa | Custo local por coleta (decodificar, snapshot, ranking, vínculos) |
+| --- | --- |
+| leve (Governador, 8 candidatos) | ~50 ms |
+| pesada (Deputado, 1.100 candidatos) | ~250 ms |
+
+O teste também confirma o modelo "custo local + latência × requisições": 8 disputas com 150 ms de rede simulada deram 2,0 s
+medidos contra 2,4 s previstos. A **única peça que não dá para medir fora do ar é a latência real do TSE**. Projeção para o
+cenário nacional (27 UFs com Governador, Senador, Dep. Federal e Dep. Estadual, mais o Presidente: 55 disputas leves a cada
+60 s e 54 pesadas a cada 120 s, tudo num worker só):
+
+| Rede por requisição | Ocupação do worker |
+| --- | --- |
+| 0,10 s | 29% |
+| 0,25 s | 50% |
+| 0,50 s | 84% (apertado) |
+| 1,00 s | 152% (a fila atrasa) |
+
+O worker satura perto de **0,6 s por requisição** (70% de ocupação em ~0,4 s). Com poucas UFs ligadas a folga é enorme.
+Regra prática para o dia: se o `p95` do `fetch` na Visão geral ficar abaixo de ~0,4 s, nada a mudar; entre 0,4 e 0,6 s, ligar
+menos UFs de Câmara ou subir o intervalo das pesadas (`ae_heavy_interval`); acima disso, o A2 (duas pistas de worker) passa a valer.
+
+**Origem da REST (WordPress inteiro por requisição).** Com `tests/load/results-node.js` (`bust=1`, que fura o cache de página),
+a origem local atendeu **~4 a 5 req/s** em qualquer rota de resultado, leve ou pesada: o custo é o WordPress com todos os
+plugins e o tema carregando, não a consulta. Com o cache de página do nginx local na frente, a mesma rota deu 120 a 640 req/s
+(p95 abaixo de 110 ms para a rota leve). Uma requisição **condicional** (`If-None-Match`) não passa pelo cache do nginx local e
+cai na origem: por isso o 304 aqui não é mais barato, só economiza bytes. Conclusão: sem cache de página ou CDN na frente, o
+site não sustenta pico de leitores. O `Cache-Control` público (`s-maxage=60`, `stale-while-revalidate`) já é enviado.
+
+**Concorrência do worker.** `tests/run-concurrency.sh`: 4 processos disputam 24 coletas de verdade (100 ms de rede simulada). O
+resultado confere: cada job roda uma vez, 24 disputas dão 24 snapshots sem duplicata, o ranking vem completo, nenhum job é
+tentado duas vezes e o lock do banco nunca foi segurado por dois processos ao mesmo tempo.
+
+**ZIP real.** `tests/wp-import-zip.php` monta um ZIP de verdade (CSV em ISO-8859-1 por UF, Brasil à parte, vice, suplente, uma
+UF fora da seleção, mais de 250 linhas numa UF) e importa pelo mesmo caminho do download. O container do site não tem
+`php-zip`, então `tests/run-with-zip.sh` roda tudo num container descartável com o pacote instalado. Confere acentos,
+paginação por cursor entre arquivos, escopo por UF e cargo, vínculos, remoção de quem sai do ZIP, HTTP 500 e arquivo que não é ZIP.
+
+**Navegador.** O `[tse_apuracao_resumo]`, o card e a tabela completa foram abertos no Chromium headless em 1280 px e em 390 px,
+com o JavaScript rodando: layout correto nas duas larguras, "Ao vivo" quando a checagem é recente e "Dados atrasados" quando passa
+do limiar (comportamento do JS e do servidor idênticos).
+
+### Testes (2.6.0)
+
+| Comando | O que faz |
+| --- | --- |
+| `tests/run-in-docker.sh` | as suítes anteriores mais `tests/wp-latency.php` (custo local e projeção) e `tests/wp-import-zip.php` (ignorado sem `php-zip`) |
+| `tests/run-with-zip.sh` | `wp-import-zip`, `wp-integration` e `wp-collect` num container descartável com `php-zip` |
+| `tests/run-concurrency.sh` | 4 workers na mesma fila; `TSE_CONC_WORKERS` muda a quantidade |
+| `node tests/load/results-node.js <url> [conexões] [segundos] [etag] [bust]` | carga na REST sem k6 |
+| `tests/run-matrix.sh` | as suítes em PHP 7.4 e 7.2 (containers descartáveis, MariaDB próprio) |
 
 ## Versões de PHP e de WordPress (2.5.0)
 

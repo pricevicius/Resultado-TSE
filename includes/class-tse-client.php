@@ -30,6 +30,7 @@ final class AE_TSE_Client {
 		$started = (string) ( $cursor['started_at'] ?? $now );
 		$imported = absint( $cursor['imported'] ?? 0 ) + count( $batch );
 		$generated = (string) ( $cursor['generated_at'] ?? '' );
+		$links = array();
 		foreach ( $batch as $row ) {
 			if ( ! is_array( $row ) ) { continue; }
 			$external = sanitize_text_field( (string) ( $row['id'] ?? $row['SQ_CANDIDATO'] ?? $row['sq_CANDIDATO'] ?? '' ) );
@@ -39,9 +40,11 @@ final class AE_TSE_Client {
 			$stamp = $this->csv_generated_at( $row ); if ( $stamp > $generated ) { $generated = $stamp; }
 			$existing = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$table} WHERE election_id=%d AND external_id=%s", $election_id, $external ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			// Sem disputa encontrada, não apaga o vínculo que o EA20 já tenha gravado.
-			if ( $existing ) { unset( $data['election_id'], $data['external_id'] ); if ( ! $contest_id ) { unset( $data['contest_id'] ); } $wpdb->update( $table, $data, array( 'id' => (int) $existing ) ); }
-			else { $wpdb->insert( $table, $data ); }
+			if ( $existing ) { unset( $data['election_id'], $data['external_id'] ); if ( ! $contest_id ) { unset( $data['contest_id'] ); } $wpdb->update( $table, $data, array( 'id' => (int) $existing ) ); $candidate_id = (int) $existing; }
+			else { $wpdb->insert( $table, $data ); $candidate_id = (int) $wpdb->insert_id; }
+			if ( $contest_id && $candidate_id ) { $links[] = array( $candidate_id, $contest_id ); }
 		}
+		$this->link_candidates( $links );
 		AE_Logger::write( 'info', 'candidate_import_page', array( 'job_id' => $job_id, 'offset' => $offset, 'count' => count( $batch ) ) );
 		$next_cursor = ( $batch_data['cursor'] ?? array( 'offset' => $offset + count( $batch ) ) ) + array( 'started_at' => $started, 'imported' => $imported, 'generated_at' => $generated );
 		if ( $complete ) {
@@ -109,6 +112,21 @@ final class AE_TSE_Client {
 			$this->contest_lookup[ $key ] = (int) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$wpdb->prefix}ae_contests WHERE election_id=%d AND round_no=%d AND position_code=%s AND scope_code=%s AND active=1 ORDER BY id ASC LIMIT 1", $election_id, $round, $position, $scope ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		}
 		return $this->contest_lookup[ $key ];
+	}
+
+	/**
+	 * Registra em ae_candidate_contests que o candidato disputa a disputa (INSERT IGNORE, em lote).
+	 * O mesmo candidato aparece no 1º e no 2º turno, que são disputas diferentes.
+	 *
+	 * @param array<int,array{0:int,1:int}> $pairs Pares [candidate_id, contest_id].
+	 */
+	private function link_candidates( array $pairs ): void {
+		global $wpdb;
+		foreach ( array_chunk( $pairs, 200 ) as $chunk ) {
+			$values = array();
+			foreach ( $chunk as $pair ) { $values[] = '(' . (int) $pair[0] . ',' . (int) $pair[1] . ')'; }
+			$wpdb->query( "INSERT IGNORE INTO {$wpdb->prefix}ae_candidate_contests (candidate_id,contest_id) VALUES " . implode( ',', $values ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		}
 	}
 
 	public function collect_results( array $payload ): array {
@@ -189,7 +207,9 @@ final class AE_TSE_Client {
 		$headers = array( 'Accept' => 'application/json', 'User-Agent' => 'WordPress Apuracao Eleitoral/' . AE_VERSION );
 		if ( ! empty( $state['etag'] ) ) { $headers['If-None-Match'] = $state['etag']; }
 		if ( ! empty( $state['last_modified'] ) ) { $headers['If-Modified-Since'] = $state['last_modified']; }
+		$started = microtime( true );
 		$response = wp_remote_get( $url, array( 'timeout' => 20, 'redirection' => 2, 'headers' => $headers ) );
+		AE_Perf::record( 'fetch', microtime( true ) - $started, is_wp_error( $response ) ? 0 : (int) wp_remote_retrieve_response_code( $response ) );
 		if ( is_wp_error( $response ) ) { throw new RuntimeException( $response->get_error_message() ); }
 		$code = wp_remote_retrieve_response_code( $response );
 		if ( 304 === $code ) { return null; }
@@ -302,21 +322,42 @@ final class AE_TSE_Client {
 			foreach ( (array) $found as $row ) { $existing[ (string) $row['external_id'] ] = $row; }
 		}
 		$now = current_time( 'mysql', true );
+		// contest_id do candidato = disputa de referência (a do menor turno): o EA20 do 2º turno não a move para o 2º turno,
+		// senão a reimportação do CSV (que é do 1º turno) e a coleta ficariam trocando o vínculo. Todos os turnos ficam em ae_candidate_contests.
+		$contest_info = $this->contest_positions( array_merge( array( $contest_id ), array_map( 'intval', array_column( $existing, 'contest_id' ) ) ) );
+		$this_contest = $contest_info[ $contest_id ] ?? null;
+		$links = array();
 		foreach ( $candidates as $candidate ) {
 			$external = (string) $candidate['external_id'];
 			$data = array( 'contest_id' => $contest_id, 'ballot_name' => $candidate['ballot_name'], 'full_name' => $candidate['full_name'], 'ballot_number' => $candidate['ballot_number'], 'party' => $candidate['party'], 'situation' => $candidate['situation'], 'photo_url' => $this->photo_url( $source_url, $external ) );
 			$current = $existing[ $external ] ?? null;
 			if ( $current ) {
+				$kept = $contest_info[ (int) $current['contest_id'] ] ?? null;
+				if ( $kept && $this_contest && $kept['position'] === $this_contest['position'] && $kept['scope'] === $this_contest['scope'] && $kept['round'] < $this_contest['round'] ) { unset( $data['contest_id'] ); }
 				$changes = array_filter( $data, static fn( $value ) => null !== $value && '' !== $value );
 				foreach ( $changes as $field => $value ) { if ( (string) $current[ $field ] === (string) $value ) { unset( $changes[ $field ] ); } }
 				if ( $changes ) { $wpdb->update( $table, $changes + array( 'updated_at' => $now ), array( 'id' => (int) $current['id'] ) ); }
 				$ids[ $external ] = (int) $current['id'];
+				$links[] = array( $ids[ $external ], $contest_id );
 				continue;
 			}
 			$wpdb->insert( $table, $data + array( 'election_id' => $election_id, 'external_id' => $external, 'data_json' => wp_json_encode( array( 'source' => 'EA20' ) ), 'updated_at' => $now ) );
 			$ids[ $external ] = (int) $wpdb->insert_id;
+			if ( $ids[ $external ] ) { $links[] = array( $ids[ $external ], $contest_id ); }
 		}
+		$this->link_candidates( $links );
 		return $ids;
+	}
+
+	/** @param int[] $ids @return array<int,array{round:int,position:string,scope:string}> Turno, cargo e escopo de cada disputa. */
+	private function contest_positions( array $ids ): array {
+		global $wpdb;
+		$ids = array_values( array_unique( array_filter( array_map( 'absint', $ids ) ) ) );
+		if ( ! $ids ) { return array(); }
+		$rows = $wpdb->get_results( 'SELECT id,round_no,position_code,scope_code FROM ' . $wpdb->prefix . 'ae_contests WHERE id IN (' . implode( ',', $ids ) . ')' ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$map = array();
+		foreach ( (array) $rows as $row ) { $map[ (int) $row->id ] = array( 'round' => (int) $row->round_no, 'position' => (string) $row->position_code, 'scope' => (string) $row->scope_code ); }
+		return $map;
 	}
 
 	/**
@@ -409,8 +450,10 @@ final class AE_TSE_Client {
 		for ( $skip = 0; $skip < $offset && false !== fgetcsv( $stream, 0, ';' ); $skip++ ) { }
 		$rows = array(); $read = 0;
 		// $read conta linhas lidas do arquivo (base do cursor de offset); $rows so guarda as que passam no filtro de cargo.
-		while ( $read < 251 && false !== ( $line = fgetcsv( $stream, 0, ';' ) ) ) {
+		while ( false !== ( $line = fgetcsv( $stream, 0, ';' ) ) ) {
 			$read++;
+			// A linha 251 só serve para saber que há mais páginas: quem a processa é a próxima página (o cursor não a conta). Processá-la aqui a contava duas vezes em ae_last_import.rows.
+			if ( $read > 250 ) { break; }
 			if ( count( $line ) !== count( $header ) ) { continue; }
 			$row = array_combine( $header, array_map( array( $this, 'utf8' ), $line ) );
 			// Só titulares (Presidente, Governador, Senador, Deputados); vice e suplentes não entram, mesmo sem escopo de cargos.

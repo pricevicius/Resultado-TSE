@@ -89,7 +89,10 @@ final class AE_Job_Runner {
 			$this->enqueue_due_collections();
 			$this->maybe_enqueue_scheduled_import();
 			$this->maybe_purge_old_jobs();
-			$this->drain( 40 );
+			$started = microtime( true );
+			$jobs = $this->drain( 40 );
+			// Só registra ticks que trabalharam: um tick vazio (fila em dia) não diz nada sobre o tempo que o lock fica preso.
+			if ( $jobs > 0 ) { AE_Perf::record( 'tick', microtime( true ) - $started, 0, $jobs ); }
 		} finally { $this->release_lock(); }
 	}
 
@@ -118,15 +121,19 @@ final class AE_Job_Runner {
 		} finally { $this->release_lock(); }
 	}
 
-	private function drain( int $seconds ): void {
+	/** @return int Quantos jobs foram executados. */
+	private function drain( int $seconds ): int {
 		$deadline = microtime( true ) + $seconds;
+		$ran = 0;
 		while ( microtime( true ) < $deadline ) {
 			// A 403/429 received during this same cycle opens the breaker immediately.
 			if ( absint( get_option( 'ae_tse_blocked_until', 0 ) ) > time() ) { break; }
 			$job = $this->claim();
 			if ( ! $job ) { break; }
 			$this->run( $job );
+			$ran++;
 		}
+		return $ran;
 	}
 
 	/** Keeps the jobs table from growing without bound so nobody has to purge it by hand. */
@@ -239,6 +246,7 @@ final class AE_Job_Runner {
 	}
 
 	private function run( object $job ): void {
+		$started = microtime( true );
 		try {
 			$payload = json_decode( $job->payload_json, true, 512, JSON_THROW_ON_ERROR );
 			$cursor = $job->cursor_json ? json_decode( $job->cursor_json, true, 512, JSON_THROW_ON_ERROR ) : array();
@@ -248,6 +256,7 @@ final class AE_Job_Runner {
 				'sync_tse' => AE_TSE_Discovery::sync( $payload ),
 				default => throw new RuntimeException( 'Unsupported job type: ' . $job->type ),
 			};
+			if ( 'collect_results' === $job->type ) { AE_Perf::record( 'job', microtime( true ) - $started ); }
 			$this->finish( $job, $done );
 		} catch ( Throwable $e ) {
 			$this->retry_or_fail( $job, $e );
