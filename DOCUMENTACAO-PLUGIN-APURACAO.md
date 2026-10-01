@@ -940,7 +940,7 @@ suporta (5.5+); nas versões antigas o shortcode `[tse_apuracao]` (e os demais) 
 PHP 7.2.12 + WordPress 4.9.8 (front com todos os shortcodes, telas do admin autenticadas, REST e as suítes de
 `tests/`), PHP 7.2.34 + WordPress 5.6, PHP 7.4.33 + WordPress 6.1 e PHP 8.2 + WordPress atual. PHP 7.2 e 7.3
 estão sem correção de segurança: a variante existe para projetos que ainda não conseguiram migrar. Como
-regenerar a `php7.2` está em [PENDENCIAS.md](PENDENCIAS.md) (seção E).
+regenerar a `php7.2` (`tools/regen-php72.sh`, sem reescrever o histórico) está em [PENDENCIAS.md](PENDENCIAS.md) (seção E).
 
 ## Repositório — código movido para submódulo (22/09/2026)
 
