@@ -49,6 +49,10 @@ wp eval-file wp-content/plugins/tse-apuracao/tests/admin-smoke.php
 
 Fixtures EA20 cobrem início zerado, totalização final, eleitos, não eleitos e duas vagas de Senado.
 
+## Pendências
+
+O que ainda está em aberto, o que foi validado só em parte e o checklist de implantação por projeto estão em [PENDENCIAS.md](PENDENCIAS.md).
+
 ## Documentação completa
 
 Leia [DOCUMENTACAO-PLUGIN-APURACAO.md](DOCUMENTACAO-PLUGIN-APURACAO.md) para arquitetura, fluxo de importação, contratos TSE, simulados, decisões, limitações e plano de mapas EA14/EA15.

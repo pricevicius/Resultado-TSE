@@ -4,7 +4,9 @@
 
 Este é o runbook técnico e funcional do plugin. Ele registra o que foi implementado, o que foi decidido e o que ainda está planejado. Toda mudança que altere fonte, contrato JSON, frequência, cache, fila, interface administrativa ou publicação deve atualizar este arquivo.
 
-Última revisão: 28/09/2026 (janela extra de simulado, 28–29/09) — UF do site adicionada ao passo de sincronização.
+Última revisão: 01/10/2026 (versão 2.4.1). Desde 28/09: saúde do disparo da coleta (2.3.8), marcadores `#NE` e vínculo do candidato com a disputa (2.3.8), intervalo por tipo de disputa, Slack removido e snapshot em transação (2.4.0), paginação do catálogo (2.4.1).
+
+**O que ainda está em aberto** (código, validação parcial, implantação por projeto e decisões já tomadas) está em [PENDENCIAS.md](PENDENCIAS.md).
 
 ## Objetivo
 
