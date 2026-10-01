@@ -11,7 +11,9 @@ final class AE_Shortcodes {
 		add_shortcode( 'apuracao_navegacao', array( $this, 'navigation' ) );
 		add_shortcode( 'tse_apuracao_resumo', array( 'AE_Resumo', 'render' ) );
 	}
-	public function render( array $atts ): string {
+	/** O WordPress entrega '' (string) quando o shortcode não tem atributos em versões antigas; por isso $atts não é tipado como array. */
+	public function render( $atts ): string {
+		$atts = is_array( $atts ) ? $atts : array();
 		$a = shortcode_atts( array( 'eleicao' => 'eleicoes-2026', 'turno' => 1, 'cargo' => '', 'abrangencia' => 'BR', 'titulo' => '' ), $atts, 'apuracao' );
 		if ( ! $a['cargo'] ) { return ''; }
 		$by_code = array_flip( TSE_API::CARGOS );
@@ -19,7 +21,7 @@ final class AE_Shortcodes {
 		if ( ! isset( $by_code[ $code ] ) ) { return current_user_can( 'edit_posts' ) ? '<p class="ae-empty">Cargo não reconhecido.</p>' : ''; }
 		return TSE_Shortcode::render( array( 'cargo' => $by_code[ $code ], 'uf' => strtolower( sanitize_key( $a['abrangencia'] ) ), 'turno' => absint( $a['turno'] ), 'titulo' => sanitize_text_field( $a['titulo'] ) ) );
 	}
-	public function candidate( array $atts ): string { return AE_Candidate_Catalog::render( array() ); }
-	public function catalog( array $atts ): string { return AE_Candidate_Catalog::render( $atts ); }
-	public function navigation( array $atts ): string { return AE_Navigation::shortcode(); }
+	public function candidate( $atts ): string { return AE_Candidate_Catalog::render( array() ); }
+	public function catalog( $atts ): string { return AE_Candidate_Catalog::render( is_array( $atts ) ? $atts : array() ); }
+	public function navigation( $atts ): string { return AE_Navigation::shortcode(); }
 }

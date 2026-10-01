@@ -136,7 +136,7 @@ try {
 	$card = do_shortcode( '[tse_apuracao_card cargo="governador" uf="zy" limite="3"]' );
 	$check( 'card: mostra o líder', false !== strpos( $card, 'CAND 1' ) );
 	$resumo = do_shortcode( '[tse_apuracao_resumo disputas="governador:zy,senador:zy" titulo="Home" link="/apuracao/"]' );
-	$check( 'resumo: mostra o líder, "Eleito", % apurado, link e o estado concluída', false !== strpos( $resumo, 'CAND 1' ) && false !== strpos( $resumo, 'Eleito' ) && false !== strpos( $resumo, '100,00% apurado' ) && false !== strpos( $resumo, 'href="/apuracao/"' ) && false !== strpos( $resumo, 'Apuração concluída' ) );
+	$check( 'resumo: mostra o líder, "Eleito", % apurado, link e o estado concluída', false !== strpos( $resumo, 'CAND 1' ) && false !== strpos( $resumo, 'Eleito' ) && false !== strpos( $resumo, number_format_i18n( 100, 2 ) . '% apurado' ) && false !== strpos( $resumo, 'href="/apuracao/"' ) && false !== strpos( $resumo, 'Apuração concluída' ) );
 	$check( 'resumo: escapa o nome do candidato e a disputa sem dado vira "Aguardando"', false === strpos( $resumo, '<b>' ) && false !== strpos( $resumo, 'tse-resumo-aguardando' ) );
 	// Disputa não finalizada e sem checagem recente: "Dados atrasados".
 	$server['body'] = $doc( 'partial' ); $server['etag'] = '"v5"';

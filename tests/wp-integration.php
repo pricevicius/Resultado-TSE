@@ -105,6 +105,11 @@ $check( 'resumo: no máximo 8 disputas', 8 === count( AE_Resumo::parse_disputas(
 $html = do_shortcode( '[tse_apuracao_resumo disputas="governador:zz" titulo="<b>X</b>" link="javascript:alert(1)"]' );
 $check( 'resumo: escapa título, recusa link perigoso e mostra "Aguardando apuração"', false === strpos( $html, '<b>X' ) && false === strpos( $html, 'javascript:' ) && false !== strpos( $html, 'Aguardando apuração' ) );
 $check( 'resumo: sem disputas válidas mostra aviso', false !== strpos( do_shortcode( '[tse_apuracao_resumo disputas="xyz"]' ), 'Nenhuma disputa configurada' ) );
+$legacy_args = array();
+foreach ( array( 'render', 'candidate', 'catalog', 'navigation' ) as $method ) {
+	try { AE_Shortcodes::instance()->$method( '' ); } catch ( Throwable $e ) { $legacy_args[] = $method . ': ' . $e->getMessage(); }
+}
+$check( 'shortcodes aceitam "" como atributos (WordPress antigo entrega string vazia)', ! $legacy_args, implode( ' | ', $legacy_args ) );
 $check( 'manual: aba aparece no menu do admin', false !== strpos( $render( 'overview' ), 'tab=shortcodes' ) );
 
 // A6: nada fixo de uma eleição ou de um projeto nas telas.
