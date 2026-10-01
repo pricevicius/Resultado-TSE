@@ -55,7 +55,7 @@ add_filter( 'pre_http_request', static function ( $pre, $args, $request_url ) us
 	$server['hits']++;
 	$sent = $args['headers']['If-None-Match'] ?? '';
 	if ( '' !== $sent ) { $server['conditional_hits']++; }
-	$res = static fn( int $code, string $body = '', array $headers = array() ) => array( 'headers' => $headers, 'body' => $body, 'response' => array( 'code' => $code, 'message' => '' ), 'cookies' => array(), 'filename' => null );
+	$res = static function ( int $code, string $body = '', array $headers = array() ) { return array( 'headers' => $headers, 'body' => $body, 'response' => array( 'code' => $code, 'message' => '' ), 'cookies' => array(), 'filename' => null ); };
 	switch ( $server['mode'] ) {
 		case '404': return $res( 404 );
 		case '429': return $res( 429 );
@@ -70,14 +70,14 @@ add_filter( 'pre_http_request', static function ( $pre, $args, $request_url ) us
 $collect = static function () use ( $cid, $url ): array {
 	return AE_TSE_Client::instance()->collect_results( array( 'contest_id' => $cid, 'source_url' => $url, 'kind' => 'EA20' ) );
 };
-$snapshots = static fn(): int => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}snapshots WHERE contest_id={$cid} AND status='valid'" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+$snapshots = static function () use ( $wpdb, $p, $cid ): int { return (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}snapshots WHERE contest_id={$cid} AND status='valid'" ); }; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 $rest = static function ( array $headers = array() ) use ( $year ): WP_REST_Response {
 	$request = new WP_REST_Request( 'GET', '/apuracao/v1/results/ae-test-collect/1/0003/ZY' );
 	foreach ( $headers as $k => $v ) { $request->set_header( $k, $v ); }
 	return rest_do_request( $request );
 };
 $http_key = 'ae_tse_http_' . md5( $url );
-$last_snapshot = static fn(): ?array => ( $r = $wpdb->get_row( "SELECT * FROM {$p}snapshots WHERE contest_id={$cid} AND status='valid' ORDER BY id DESC LIMIT 1", ARRAY_A ) ) ? array_merge( $r, array( 'totals' => json_decode( (string) $r['totals_json'], true ) ) ) : null; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+$last_snapshot = static function () use ( $r, $wpdb, $p, $cid ): ?array { return ( $r = $wpdb->get_row( "SELECT * FROM {$p}snapshots WHERE contest_id={$cid} AND status='valid' ORDER BY id DESC LIMIT 1", ARRAY_A ) ) ? array_merge( $r, array( 'totals' => json_decode( (string) $r['totals_json'], true ) ) ) : null; }; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 try {
 	// 1) Antes da apuração começar: 0 votos, aguardando.
@@ -120,7 +120,7 @@ try {
 	$server['body'] = $doc( 'runoff' ); $server['etag'] = '"v3"';
 	$collect();
 	$data = $rest()->get_data();
-	$flags = array_map( static fn( $c ) => array( (int) $c['elected'], (bool) $c['segundo_turno'] ), array_slice( $data['candidates'], 0, 3 ) );
+	$flags = array_map( static function ( $c ) { return array( (int) $c['elected'], (bool) $c['segundo_turno'] ); }, array_slice( $data['candidates'], 0, 3 ) );
 	$check( 'quirk 2º turno: quem segue para o 2º turno não é marcado eleito', array( array( 0, true ), array( 0, true ), array( 0, false ) ) === $flags, wp_json_encode( $flags ) );
 
 	// 7) Final com um eleito.
@@ -184,8 +184,8 @@ try {
 	$cid2 = 0;
 	$wpdb->insert( $p . 'contests', array( 'election_id' => $eid, 'external_id' => 'ae-test-collect-2t', 'round_no' => 2, 'position_code' => '0003', 'position_name' => 'Governador', 'scope_type' => 'UF', 'scope_code' => 'ZY', 'scope_name' => 'Teste', 'seats' => 1, 'active' => 1, 'config_json' => wp_json_encode( array( 'collection' => array( 'enabled' => true, 'kind' => 'EA20', 'source_url' => $url2, 'interval' => 60 ) ) ) ) );
 	$cid2 = (int) $wpdb->insert_id;
-	$ref = static fn(): int => (int) $wpdb->get_var( "SELECT contest_id FROM {$p}candidates WHERE election_id={$eid} AND external_id='5001'" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-	$links = static fn(): array => array_map( 'intval', $wpdb->get_col( "SELECT l.contest_id FROM {$p}candidate_contests l JOIN {$p}candidates c ON c.id=l.candidate_id WHERE c.election_id={$eid} AND c.external_id='5001' ORDER BY l.contest_id" ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	$ref = static function () use ( $wpdb, $p, $eid ): int { return (int) $wpdb->get_var( "SELECT contest_id FROM {$p}candidates WHERE election_id={$eid} AND external_id='5001'" ); }; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	$links = static function () use ( $wpdb, $p, $eid ): array { return array_map( 'intval', $wpdb->get_col( "SELECT l.contest_id FROM {$p}candidate_contests l JOIN {$p}candidates c ON c.id=l.candidate_id WHERE c.election_id={$eid} AND c.external_id='5001' ORDER BY l.contest_id" ) ); }; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	$check( 'A9: após o 1º turno o candidato está vinculado só à disputa do 1º turno', $cid === $ref() && array( $cid ) === $links(), $ref() . ' ' . wp_json_encode( $links() ) );
 	$server['body'] = $doc( 'runoff' ); $server['etag'] = '"v8"';
 	AE_TSE_Client::instance()->collect_results( array( 'contest_id' => $cid2, 'source_url' => $url2, 'kind' => 'EA20' ) );

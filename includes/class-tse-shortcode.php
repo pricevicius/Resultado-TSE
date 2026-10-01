@@ -2,7 +2,7 @@
 defined( 'ABSPATH' ) || exit;
 
 class TSE_Shortcode {
-	private static bool $assets_localized = false;
+	private static $assets_localized = false;
 
     public static function init(): void {
         add_shortcode( 'tse_apuracao', [ __CLASS__, 'render' ] );

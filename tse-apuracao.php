@@ -3,7 +3,7 @@
  * Plugin Name:  TSE Apuração
  * Description:  Publica snapshots auditáveis de resultados eleitorais do TSE. Use o shortcode [tse_apuracao] ou o bloco Apuração eleitoral.
  * Version:      2.7.0
- * Requires PHP: 7.4
+ * Requires PHP: 7.2
  * License:      GPL-2.0-or-later
  * Text Domain:  tse-apuracao
  */

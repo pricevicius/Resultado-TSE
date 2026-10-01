@@ -16,10 +16,10 @@ $status       = $dados['status'] ?? '';
 $atrasado     = ! empty( $dados['atrasado'] );
 $turno_atual  = (int) ( $dados['turno'] ?? 1 );
 $turno_attr   = $turno > 0 ? $turno : 'auto'; // auto: o JS acompanha a virada para o 2º turno sem recarregar
-$turno_selo   = static fn(): string => '<span class="tse-turno-selo"' . ( $turno_atual > 1 ? '>' . esc_html( $turno_atual . 'º turno' ) : ' hidden>' ) . '</span>';
+$turno_selo   = static function () use ( $turno_atual ): string { return '<span class="tse-turno-selo"' . ( $turno_atual > 1 ? '>' . esc_html( $turno_atual . 'º turno' ) : ' hidden>' ) . '</span>'; };
 
 /** 'percentual' vem formatado ("12,85%") para exibicao; largura de barra precisa de numero puro (ponto). */
-$barra_pct = static fn( array $c ): float => (float) str_replace( ',', '.', rtrim( (string) $c['percentual'], '% ' ) );
+$barra_pct = static function ( array $c ): float { return (float) str_replace( ',', '.', rtrim( (string) $c['percentual'], '% ' ) ); };
 
 $badge = static function ( array $c ) use ( $status ): string {
 	if ( $c['eleito'] ) { return '<span class="tse-badge-eleito">Eleito</span>'; }

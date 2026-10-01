@@ -91,7 +91,7 @@ if ( '' === $site_uf ) {
 }
 
 // A5: lógica pura, sem tocar no banco.
-$mk = static fn( string $uf, ?bool $enabled ) => (object) array( 'position_name' => 'X', 'scope_code' => $uf, 'round_no' => 1, 'config_json' => null === $enabled ? '{}' : wp_json_encode( array( 'collection' => array( 'enabled' => $enabled ) ) ) );
+$mk = static function ( string $uf, ?bool $enabled ) { return (object) array( 'position_name' => 'X', 'scope_code' => $uf, 'round_no' => 1, 'config_json' => null === $enabled ? '{}' : wp_json_encode( array( 'collection' => array( 'enabled' => $enabled ) ) ) ); };
 $check( 'disabled_in_site_uf: só a UF do site e só as desligadas', 1 === count( AE_Collection_Policy::disabled_in_site_uf( array( $mk( 'SP', false ), $mk( 'SP', true ), $mk( 'RJ', false ), $mk( 'BR', false ), $mk( 'SP', null ) ), 'sp' ) ) );
 $check( 'disabled_in_site_uf: sem UF não avisa', array() === AE_Collection_Policy::disabled_in_site_uf( array( $mk( 'SP', false ) ), '' ) );
 
@@ -99,9 +99,9 @@ $check( 'disabled_in_site_uf: sem UF não avisa', array() === AE_Collection_Poli
 // Manual do admin (aba "Como usar"): não pode divergir do código.
 $guide = $render( 'shortcodes' );
 $registered = array( 'tse_apuracao', 'tse_apuracao_card', 'tse_apuracao_resumo', 'apuracao', 'apuracao_candidato', 'apuracao_candidatos', 'apuracao_candidatos_lista', 'apuracao_navegacao' );
-$missing = array_filter( $registered, static fn( string $tag ): bool => ! shortcode_exists( $tag ) || false === strpos( $guide, '[' . $tag ) );
+$missing = array_filter( $registered, static function ( string $tag ) use ( $guide ): bool { return ! shortcode_exists( $tag ) || false === strpos( $guide, '[' . $tag ); });
 $check( 'manual: todo shortcode registrado está documentado', ! $missing, implode( ',', $missing ) );
-$slugs_missing = array_filter( array_keys( TSE_API::CARGOS ), static fn( string $slug ): bool => false === strpos( $guide, '<code>' . $slug . '</code>' ) );
+$slugs_missing = array_filter( array_keys( TSE_API::CARGOS ), static function ( string $slug ) use ( $guide ): bool { return false === strpos( $guide, '<code>' . $slug . '</code>' ); });
 $check( 'manual: tabela de cargos traz todos os cargos de TSE_API::CARGOS', ! $slugs_missing, implode( ',', $slugs_missing ) );
 preg_match_all( '#<div class="ae-code"><code>(.*?)</code>#s', $guide, $found );
 $examples = array_map( 'html_entity_decode', $found[1] );
@@ -113,7 +113,7 @@ foreach ( $examples as $example ) {
 }
 $check( 'manual: todo exemplo copiável executa como shortcode', ! $broken, implode( ' | ', $broken ) );
 $parsed = AE_Resumo::parse_disputas( 'governador:SP, senador:sp:2,xyz:rj,presidente,vereador:rj:9,deputado-federal:sp:0' );
-$check( 'resumo: lê cargo:uf:turno, ignora cargo desconhecido, usa br, turno omitido ou 0 = automático e limita o turno a 2', array( array( 'governador', 'sp', 0 ), array( 'senador', 'sp', 2 ), array( 'presidente', 'br', 0 ), array( 'vereador', 'rj', 2 ), array( 'deputado-federal', 'sp', 0 ) ) === array_map( static fn( $r ) => array( $r['cargo'], $r['uf'], $r['turno'] ), $parsed ), wp_json_encode( $parsed ) );
+$check( 'resumo: lê cargo:uf:turno, ignora cargo desconhecido, usa br, turno omitido ou 0 = automático e limita o turno a 2', array( array( 'governador', 'sp', 0 ), array( 'senador', 'sp', 2 ), array( 'presidente', 'br', 0 ), array( 'vereador', 'rj', 2 ), array( 'deputado-federal', 'sp', 0 ) ) === array_map( static function ( $r ) { return array( $r['cargo'], $r['uf'], $r['turno'] ); }, $parsed ), wp_json_encode( $parsed ) );
 $check( 'resumo: no máximo 8 disputas', 8 === count( AE_Resumo::parse_disputas( implode( ',', array_fill( 0, 20, 'governador:sp' ) ) ) ) );
 $html = do_shortcode( '[tse_apuracao_resumo disputas="governador:zz" titulo="<b>X</b>" link="javascript:alert(1)"]' );
 $check( 'resumo: escapa título, recusa link perigoso e mostra "Aguardando apuração"', false === strpos( $html, '<b>X' ) && false === strpos( $html, 'javascript:' ) && false !== strpos( $html, 'Aguardando apuração' ) );
@@ -159,7 +159,7 @@ $run_import = static function ( array $rows, int $job_id ) use ( $test_election,
 	}
 	throw new RuntimeException( 'Importação não terminou.' );
 };
-$cand = static fn( string $sq, string $name, string $cargo = '6' ) => array( $sq, $name, $name . ' da Silva', '1' . $sq, 'ABC', $cargo, 'ZZ', '1', 'Deferido', '28/09/2026', '09:41:32' );
+$cand = static function ( string $sq, string $name, string $cargo = '6' ) { return array( $sq, $name, $name . ' da Silva', '1' . $sq, 'ABC', $cargo, 'ZZ', '1', 'Deferido', '28/09/2026', '09:41:32' ); };
 $removed_ids = static function () use ( $wpdb, $p, $test_election ): array {
 	return array_map( 'strval', $wpdb->get_col( $wpdb->prepare( "SELECT external_id FROM {$p}candidates WHERE election_id=%d AND removed_at IS NOT NULL ORDER BY external_id", $test_election ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 };
@@ -196,7 +196,7 @@ try {
 	$check( 'A3: importação sem nenhuma linha não marca ninguém', array() === $removed_ids() );
 
 	// A4: agendamento. Desligado não enfileira; ligado enfileira uma vez e respeita o intervalo.
-	$jobs = static fn(): int => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}jobs WHERE type='import_candidates' AND payload_json LIKE '%\"election_id\":" . $test_election . ",%'" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	$jobs = static function () use ( $wpdb, $p, $test_election ): int { return (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}jobs WHERE type='import_candidates' AND payload_json LIKE '%\"election_id\":" . $test_election . ",%'" ); }; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	$schedule = new ReflectionMethod( AE_Job_Runner::class, 'maybe_enqueue_scheduled_import' );
 	$schedule->setAccessible( true );
 	$runner = AE_Job_Runner::instance();

@@ -11,7 +11,7 @@ defined( 'ABSPATH' ) || exit;
  */
 final class AE_Rounds {
 	/** @var array<string,array> */
-	private static array $memo = array();
+	private static $memo = array();
 
 	/**
 	 * @param string $position Código do cargo com 4 dígitos ("0001").
