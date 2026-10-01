@@ -85,12 +85,19 @@ final class AE_Candidate_Catalog {
 		return $label . ' · mostrando ' . number_format_i18n( $first ) . '–' . number_format_i18n( $first + $shown - 1 );
 	}
 
+	/** "1º e 2º turno" quando o candidato consta em mais de uma disputa (turnos); vazio com um turno só. */
+	private static function rounds_label( int $candidate_id ): string {
+		global $wpdb; $p = $wpdb->prefix . 'ae_';
+		$rounds = array_map( 'absint', (array) $wpdb->get_col( $wpdb->prepare( "SELECT DISTINCT ct.round_no FROM {$p}candidate_contests l INNER JOIN {$p}contests ct ON ct.id=l.contest_id WHERE l.candidate_id=%d ORDER BY ct.round_no", $candidate_id ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return count( $rounds ) > 1 ? implode( ' e ', array_map( static function ( $round ) { return $round . 'º'; }, $rounds ) ) . ' turno' : '';
+	}
+
 	private static function profile( string $external, string $back ): string {
 		global $wpdb; $p = $wpdb->prefix . 'ae_'; $row = $wpdb->get_row( $wpdb->prepare( "SELECT c.*,ct.position_name,ct.scope_code FROM {$p}candidates c LEFT JOIN {$p}contests ct ON ct.id=c.contest_id WHERE c.external_id=%s ORDER BY c.updated_at DESC LIMIT 1", $external ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		if ( ! $row ) { return '<p class="ae-catalog-empty">Candidato não encontrado.</p>'; }
 		$data = json_decode( (string) $row['data_json'], true ); $data = is_array( $data ) ? $data : array();
 		$personal = array_filter( array_map( array( __CLASS__, 'clean_value' ), array( 'Ocupação' => $data['DS_OCUPACAO'] ?? '', 'Data de nascimento' => $data['DT_NASCIMENTO'] ?? '', 'Escolaridade' => $data['DS_GRAU_INSTRUCAO'] ?? '', 'Estado civil' => $data['DS_ESTADO_CIVIL'] ?? '', 'Naturalidade' => trim( self::clean_value( $data['NM_MUNICIPIO_NASCIMENTO'] ?? '' ) . ' ' . self::clean_value( $data['SG_UF_NASCIMENTO'] ?? '' ) ) ) ) );
-		$application = array_filter( array_map( array( __CLASS__, 'clean_value' ), array( 'Nome completo' => $row['full_name'], 'Situação' => self::clean_value( $row['situation'] ) ?: 'Não informada', 'Lista do TSE' => ! empty( $row['removed_at'] ) ? self::REMOVED_LABEL : '', 'Coligação' => $data['NM_COLIGACAO'] ?? '', 'Composição' => $data['DS_COMPOSICAO_COLIGACAO'] ?? '' ) ) );
+		$application = array_filter( array_map( array( __CLASS__, 'clean_value' ), array( 'Nome completo' => $row['full_name'], 'Situação' => self::clean_value( $row['situation'] ) ?: 'Não informada', 'Lista do TSE' => ! empty( $row['removed_at'] ) ? self::REMOVED_LABEL : '', 'Turnos disputados' => self::rounds_label( (int) $row['id'] ), 'Coligação' => $data['NM_COLIGACAO'] ?? '', 'Composição' => $data['DS_COMPOSICAO_COLIGACAO'] ?? '' ) ) );
 		ob_start(); ?><article class="ae-candidate-profile"><a href="<?php echo esc_url( $back ); ?>">← Voltar aos candidatos</a><header><?php if ( $row['photo_url'] ) : ?><img src="<?php echo esc_url( $row['photo_url'] ); ?>" alt=""><?php endif; ?><div><span><?php echo esc_html( $row['ballot_number'] ); ?></span><h1><?php echo esc_html( $row['ballot_name'] ?: $row['full_name'] ); ?></h1><p><?php echo esc_html( $row['party'] ); ?> · <?php echo esc_html( $row['position_name'] ); ?> · <?php echo esc_html( $row['scope_code'] ); ?></p></div></header><h2>Dados da candidatura</h2><dl><?php foreach ( $application as $label=>$value ) : ?><dt><?php echo esc_html( $label ); ?></dt><dd><?php echo esc_html( $value ); ?></dd><?php endforeach; ?></dl><?php if ( $personal ) : ?><h2>Dados pessoais</h2><dl><?php foreach ( $personal as $label=>$value ) : ?><dt><?php echo esc_html( $label ); ?></dt><dd><?php echo esc_html( $value ); ?></dd><?php endforeach; ?></dl><?php endif; ?></article><?php return (string) ob_get_clean();
 	}
 }

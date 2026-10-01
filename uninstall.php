@@ -17,7 +17,7 @@ if ( ! get_option( 'ae_delete_data_on_uninstall' ) ) {
 
 global $wpdb;
 $prefix = $wpdb->prefix . 'ae_';
-foreach ( array( 'result_rows', 'snapshots', 'candidates', 'contests', 'elections', 'jobs', 'logs' ) as $table ) {
+foreach ( array( 'result_rows', 'snapshots', 'candidate_contests', 'candidates', 'contests', 'elections', 'jobs', 'logs' ) as $table ) {
 	$wpdb->query( "DROP TABLE IF EXISTS `{$prefix}{$table}`" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 }
 delete_option( 'ae_delete_data_on_uninstall' );
