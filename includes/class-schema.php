@@ -2,13 +2,13 @@
 defined( 'ABSPATH' ) || exit;
 
 final class AE_Schema {
-	public const VERSION = '2.0.4';
+	public const VERSION = '2.1.0';
 
 	/** Checks both the migration marker and the physical tables before use. */
 	public static function is_ready(): bool {
 		global $wpdb;
 		$p = $wpdb->prefix . 'ae_';
-		$required = array( 'elections', 'contests', 'candidates', 'snapshots', 'result_rows', 'jobs', 'logs' );
+		$required = array( 'elections', 'contests', 'candidates', 'candidate_contests', 'snapshots', 'result_rows', 'jobs', 'logs' );
 		foreach ( $required as $table ) {
 			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $p . $table ) ) !== $p . $table ) { return false; }
 		}
@@ -88,6 +88,14 @@ final class AE_Schema {
 				KEY contest_number (contest_id,ballot_number),
 				KEY election_name (election_id,ballot_name(80))
 			) {$charset};",
+			// Vínculo candidato x disputa: o mesmo candidato disputa o 1º e o 2º turno (disputas diferentes).
+			// ae_candidates.contest_id guarda só a disputa de referência (a do menor turno); esta tabela guarda todas.
+			"CREATE TABLE {$p}candidate_contests (
+				candidate_id bigint unsigned NOT NULL,
+				contest_id bigint unsigned NOT NULL,
+				PRIMARY KEY  (candidate_id,contest_id),
+				KEY contest (contest_id)
+			) {$charset};",
 			"CREATE TABLE {$p}snapshots (
 				id bigint unsigned NOT NULL AUTO_INCREMENT,
 				contest_id bigint unsigned NOT NULL,
@@ -152,13 +160,15 @@ final class AE_Schema {
 			) {$charset};",
 		);
 		foreach ( $queries as $query ) { dbDelta( $query ); }
-		$required = array( 'elections', 'contests', 'candidates', 'snapshots', 'result_rows', 'jobs', 'logs' );
+		$required = array( 'elections', 'contests', 'candidates', 'candidate_contests', 'snapshots', 'result_rows', 'jobs', 'logs' );
 		$missing = array_filter( $required, static function ( string $table ) use ( $wpdb, $p ): bool { return $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $p . $table ) ) !== $p . $table; });
 		if ( $missing ) {
 			delete_option( 'ae_schema_version' );
 			error_log( 'Apuracao Eleitoral: tabelas nao criadas: ' . implode( ', ', $missing ) ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 			return;
 		}
+		// Instalações anteriores à 2.1.0 já têm candidatos vinculados a uma disputa: copia esses vínculos para a tabela nova (idempotente).
+		$wpdb->query( "INSERT IGNORE INTO {$p}candidate_contests (candidate_id,contest_id) SELECT c.id,c.contest_id FROM {$p}candidates c INNER JOIN {$p}contests ct ON ct.id=c.contest_id" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		update_option( 'ae_schema_version', self::VERSION, false );
 	}
 }

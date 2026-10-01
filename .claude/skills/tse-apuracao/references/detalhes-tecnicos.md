@@ -17,7 +17,8 @@ Complemento do `SKILL.md`. Os nomes abaixo são do plugin; confirme no código c
 | `includes/class-candidate-catalog.php` | catálogo e ficha de candidatos |
 | `includes/class-results.php` | leitura do último snapshot (cache de objeto) |
 | `includes/class-collection-policy.php` | regra de intervalo por tipo de disputa, `interval_mode` auto/manual, `apply_all()`, limiar de "atrasado" |
-| `includes/class-schema.php` | criação e migração das tabelas |
+| `includes/class-schema.php` | criação e migração das tabelas (inclui `ae_candidate_contests`) |
+| `includes/class-perf.php` | amostras de tempo do download, da coleta e do tick (`AE_Perf`) |
 | `bin/tse-tick.php`, `bin/tse-tick-loop.sh` | disparo independente do WP-Cron (CLI) |
 | `assets/js/tse-live.js`, `assets/css/tse-apuracao.css` | polling ao vivo e estilo |
 | `templates/card.php` | markup do card compacto |

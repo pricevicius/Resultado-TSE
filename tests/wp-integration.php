@@ -169,6 +169,8 @@ try {
 	$check( 'importação: 3 titulares entram, o vice (cargo 2) não', 3 === $count, (string) $count );
 	$linked = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$p}candidates WHERE election_id=%d AND contest_id=%d", $test_election, $test_contest ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	$check( 'importação: candidatos vinculados à disputa por cargo+UF+turno', 3 === $linked, (string) $linked );
+	$links_n = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$p}candidate_contests l INNER JOIN {$p}candidates c ON c.id=l.candidate_id WHERE c.election_id=%d AND l.contest_id=%d", $test_election, $test_contest ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	$check( 'A9: a importação registra o vínculo candidato x disputa', 3 === $links_n, (string) $links_n );
 	$last = get_option( 'ae_last_import' );
 	$check( 'A4: ae_last_import guarda linhas e geração do CSV', is_array( $last ) && 3 === (int) $last['rows'] && '2026-09-28 09:41:32' === $last['csv_generated_at'] && 0 === (int) $last['removed'], wp_json_encode( $last ) );
 	$check( 'A3: primeira importação não marca ninguém', array() === $removed_ids() );
@@ -215,6 +217,7 @@ try {
 	$check( 'A4: sem disputa ligada não agenda importação nacional', 0 === $jobs() );
 } finally {
 	$wpdb->query( $wpdb->prepare( "DELETE FROM {$p}jobs WHERE payload_json LIKE %s", '%"election_id":' . $test_election . ',%' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	$wpdb->query( $wpdb->prepare( "DELETE l FROM {$p}candidate_contests l INNER JOIN {$p}candidates c ON c.id=l.candidate_id WHERE c.election_id=%d", $test_election ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	$wpdb->delete( $p . 'candidates', array( 'election_id' => $test_election ) );
 	$wpdb->delete( $p . 'contests', array( 'election_id' => $test_election ) );
 	$wpdb->delete( $p . 'elections', array( 'id' => $test_election ) );
@@ -272,6 +275,7 @@ try {
 } finally {
 	$wpdb->query( "DELETE r FROM {$p}result_rows r JOIN {$p}snapshots s ON s.id=r.snapshot_id WHERE s.contest_id={$pc}" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	$wpdb->delete( $p . 'snapshots', array( 'contest_id' => $pc ) );
+	$wpdb->query( "DELETE l FROM {$p}candidate_contests l JOIN {$p}candidates c ON c.id=l.candidate_id WHERE c.election_id={$pe}" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	$wpdb->delete( $p . 'candidates', array( 'election_id' => $pe ) );
 	$wpdb->delete( $p . 'contests', array( 'id' => $pc ) );
 	$wpdb->delete( $p . 'elections', array( 'id' => $pe ) );

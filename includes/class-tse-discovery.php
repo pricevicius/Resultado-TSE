@@ -10,8 +10,8 @@ final class AE_TSE_Discovery {
 
 	public static function environment( string $environment ): array {
 		if ( 'simulado' === sanitize_key( $environment ) ) {
-			// The TSE's 2026 simulation is published below this versioned path.
-			return array( 'name' => 'simulado/simulado2026', 'base' => 'https://resultados-sim.tse.jus.br' );
+			// The TSE's 2026 simulation is published below this versioned path; the filter lets a later election point at its own.
+			return array( 'name' => (string) apply_filters( 'ae_tse_simulation_path', 'simulado/simulado2026' ), 'base' => 'https://resultados-sim.tse.jus.br' );
 		}
 		return array( 'name' => 'oficial', 'base' => 'https://resultados.tse.jus.br' );
 	}

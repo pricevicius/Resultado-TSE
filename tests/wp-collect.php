@@ -19,6 +19,7 @@ $p = $wpdb->prefix . 'ae_';
 $now = current_time( 'mysql', true );
 $year = (int) ( get_option( 'tse_apuracao_settings', array() )['ano'] ?? AE_Plugin::default_election_year() );
 $url = 'https://resultados.tse.jus.br/oficial/ele' . $year . '/9999/dados/zy/zy-c0003-e009999-u.json';
+$url2 = 'https://resultados.tse.jus.br/oficial/ele' . $year . '/9998/dados/zy/zy-c0003-e009998-u.json';
 $saved = array( 'ae_tse_blocked_until' => get_option( 'ae_tse_blocked_until', null ) );
 
 $wpdb->insert( $p . 'elections', array( 'slug' => 'ae-test-collect', 'name' => 'Teste coleta', 'year' => $year, 'timezone' => 'America/Sao_Paulo', 'status' => 'active', 'config_json' => '{}', 'created_at' => $now, 'updated_at' => $now ) );
@@ -49,8 +50,8 @@ $doc = static function ( string $stage, int $n = 40 ): array {
 
 // Servidor TSE falso: $server['mode'] decide a resposta; registra as requisições.
 $server = array( 'mode' => 'ok', 'body' => $doc( 'zero' ), 'etag' => '"v1"', 'hits' => 0, 'conditional_hits' => 0 );
-add_filter( 'pre_http_request', static function ( $pre, $args, $request_url ) use ( &$server, $url ) {
-	if ( $request_url !== $url ) { return new WP_Error( 'blocked', 'Teste bloqueou rede real: ' . $request_url ); }
+add_filter( 'pre_http_request', static function ( $pre, $args, $request_url ) use ( &$server, $url, $url2 ) {
+	if ( $request_url !== $url && $request_url !== $url2 ) { return new WP_Error( 'blocked', 'Teste bloqueou rede real: ' . $request_url ); }
 	$server['hits']++;
 	$sent = $args['headers']['If-None-Match'] ?? '';
 	if ( '' !== $sent ) { $server['conditional_hits']++; }
@@ -177,6 +178,35 @@ try {
 	$cfg = json_decode( (string) $wpdb->get_var( "SELECT config_json FROM {$p}contests WHERE id={$cid}" ), true ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	$check( 'fonte volta a publicar: o adiamento é limpo sozinho', empty( $cfg['collection']['missing_attempts'] ) && empty( $cfg['collection']['next_attempt_at'] ) );
 
+	// 10b) A9: o mesmo candidato no 1º e no 2º turno (disputas diferentes, mesmo cargo e escopo).
+	$server['mode'] = 'ok'; $server['etag'] = '"v7"'; $server['body'] = $doc( 'final' );
+	$collect();
+	$cid2 = 0;
+	$wpdb->insert( $p . 'contests', array( 'election_id' => $eid, 'external_id' => 'ae-test-collect-2t', 'round_no' => 2, 'position_code' => '0003', 'position_name' => 'Governador', 'scope_type' => 'UF', 'scope_code' => 'ZY', 'scope_name' => 'Teste', 'seats' => 1, 'active' => 1, 'config_json' => wp_json_encode( array( 'collection' => array( 'enabled' => true, 'kind' => 'EA20', 'source_url' => $url2, 'interval' => 60 ) ) ) ) );
+	$cid2 = (int) $wpdb->insert_id;
+	$ref = static function () use ( $wpdb, $p, $eid ): int { return (int) $wpdb->get_var( "SELECT contest_id FROM {$p}candidates WHERE election_id={$eid} AND external_id='5001'" ); }; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	$links = static function () use ( $wpdb, $p, $eid ): array { return array_map( 'intval', $wpdb->get_col( "SELECT l.contest_id FROM {$p}candidate_contests l JOIN {$p}candidates c ON c.id=l.candidate_id WHERE c.election_id={$eid} AND c.external_id='5001' ORDER BY l.contest_id" ) ); }; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	$check( 'A9: após o 1º turno o candidato está vinculado só à disputa do 1º turno', $cid === $ref() && array( $cid ) === $links(), $ref() . ' ' . wp_json_encode( $links() ) );
+	$server['body'] = $doc( 'runoff' ); $server['etag'] = '"v8"';
+	AE_TSE_Client::instance()->collect_results( array( 'contest_id' => $cid2, 'source_url' => $url2, 'kind' => 'EA20' ) );
+	$check( 'A9: coletar o 2º turno NÃO move a disputa de referência do candidato', $cid === $ref(), (string) $ref() );
+	$both = array( $cid, $cid2 ); sort( $both );
+	$check( 'A9: o candidato fica vinculado às duas disputas (1º e 2º turno)', $both === $links(), wp_json_encode( $links() ) );
+	AE_TSE_Client::instance()->collect_results( array( 'contest_id' => $cid2, 'source_url' => $url2, 'kind' => 'EA20' ) );
+	$check( 'A9: recoletar não duplica o vínculo', $both === $links() );
+	// Candidato que só existe no 2º turno (cadastro novo pelo EA20 do 2º turno) fica na disputa do 2º turno.
+	$extra = $doc( 'runoff', 41 ); $server['body'] = $extra; $server['etag'] = '"v9"';
+	AE_TSE_Client::instance()->collect_results( array( 'contest_id' => $cid2, 'source_url' => $url2, 'kind' => 'EA20' ) );
+	$check( 'A9: candidato novo do 2º turno nasce vinculado à disputa do 2º turno', $cid2 === (int) $wpdb->get_var( "SELECT contest_id FROM {$p}candidates WHERE election_id={$eid} AND external_id='5041'" ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	$_GET['ae_candidato'] = '5001';
+	$profile = do_shortcode( '[apuracao_candidatos]' );
+	unset( $_GET['ae_candidato'] );
+	$check( 'A9: o perfil do candidato mostra "1º e 2º turno"', false !== strpos( $profile, 'Turnos disputados' ) && false !== strpos( $profile, '1º e 2º turno' ) );
+	// A tabela de vínculos existe e a migração é idempotente.
+	AE_Schema::install();
+	$check( 'A9: reinstalar o esquema mantém os vínculos (idempotente)', $both === $links() );
+	$server['body'] = $doc( 'final' ); $server['etag'] = '"v7"';
+
 	// 11) 429: pausa preventiva de 10 min; nada mais é buscado até acabar.
 	$server['mode'] = '429';
 	$err = '';
@@ -192,6 +222,8 @@ try {
 	remove_all_filters( 'pre_http_request' );
 	$wpdb->query( "DELETE r FROM {$p}result_rows r JOIN {$p}snapshots s ON s.id=r.snapshot_id WHERE s.contest_id={$cid}" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	$wpdb->delete( $p . 'snapshots', array( 'contest_id' => $cid ) );
+	$wpdb->query( "DELETE l FROM {$p}candidate_contests l JOIN {$p}candidates c ON c.id=l.candidate_id WHERE c.election_id={$eid}" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	if ( ! empty( $cid2 ) ) { $wpdb->query( "DELETE r FROM {$p}result_rows r JOIN {$p}snapshots s ON s.id=r.snapshot_id WHERE s.contest_id={$cid2}" ); $wpdb->delete( $p . 'snapshots', array( 'contest_id' => $cid2 ) ); $wpdb->delete( $p . 'contests', array( 'id' => $cid2 ) ); delete_option( 'ae_result_checked_' . $cid2 ); delete_option( 'ae_tse_http_' . md5( $url2 ) ); } // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	$wpdb->delete( $p . 'candidates', array( 'election_id' => $eid ) );
 	$wpdb->delete( $p . 'contests', array( 'id' => $cid ) );
 	$wpdb->delete( $p . 'elections', array( 'id' => $eid ) );
