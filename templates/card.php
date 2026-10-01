@@ -14,6 +14,9 @@ defined( 'ABSPATH' ) || exit;
 $rotulo_cargo = $titulo ?: ( ucfirst( str_replace( '-', ' ', $cargo ) ) . ' — ' . strtoupper( $uf ) );
 $status       = $dados['status'] ?? '';
 $atrasado     = ! empty( $dados['atrasado'] );
+$turno_atual  = (int) ( $dados['turno'] ?? 1 );
+$turno_attr   = $turno > 0 ? $turno : 'auto'; // auto: o JS acompanha a virada para o 2º turno sem recarregar
+$turno_selo   = static function () use ( $turno_atual ): string { return '<span class="tse-turno-selo"' . ( $turno_atual > 1 ? '>' . esc_html( $turno_atual . 'º turno' ) : ' hidden>' ) . '</span>'; };
 
 /** 'percentual' vem formatado ("12,85%") para exibicao; largura de barra precisa de numero puro (ponto). */
 $barra_pct = static function ( array $c ): float { return (float) str_replace( ',', '.', rtrim( (string) $c['percentual'], '% ' ) ); };
@@ -27,13 +30,13 @@ $badge = static function ( array $c ) use ( $status ): string {
 	return '';
 };
 
-$renderiza_card = function ( int $posicao, ?array $c, string $classe_card = '', bool $mostrar_header = true ) use ( $widget_id, $cargo, $uf, $turno, $limite, $atualizar, $rotulo_cargo, $erro, $dados, $badge, $barra_pct, $atrasado, $status ): void {
+$renderiza_card = function ( int $posicao, ?array $c, string $classe_card = '', bool $mostrar_header = true ) use ( $widget_id, $cargo, $uf, $turno_attr, $turno_selo, $limite, $atualizar, $rotulo_cargo, $erro, $dados, $badge, $barra_pct, $atrasado, $status ): void {
 	?>
 	<div id="<?php echo esc_attr( $widget_id . '-' . $posicao ); ?>"
 		class="tse-card <?php echo $classe_card ? esc_attr( $classe_card ) : ''; ?>"
 		data-cargo="<?php echo esc_attr( $cargo ); ?>"
 		data-uf="<?php echo esc_attr( $uf ); ?>"
-		data-turno="<?php echo esc_attr( $turno ); ?>"
+		data-turno="<?php echo esc_attr( $turno_attr ); ?>"
 		data-posicao="<?php echo esc_attr( $posicao ); ?>"
 		data-limite="<?php echo esc_attr( max( $limite, $posicao + 1 ) ); ?>"
 		data-atualizar="<?php echo esc_attr( $atualizar ); ?>">
@@ -41,6 +44,7 @@ $renderiza_card = function ( int $posicao, ?array $c, string $classe_card = '', 
 		<?php if ( $mostrar_header ) : ?>
 		<div class="tse-card-header">
 			<span class="tse-card-cargo"><?php echo esc_html( $rotulo_cargo ); ?></span>
+			<?php echo $turno_selo(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 			<?php if ( ! $erro ) : ?>
 			<span class="tse-card-pct"><?php echo esc_html( $dados['pct_apurado'] ?? '0%' ); ?> apurado</span>
 			<?php endif; ?>
@@ -91,12 +95,13 @@ if ( count( $candidatos ) <= 1 ) {
 		class="tse-card-secao <?php echo $classe_extra ? esc_attr( $classe_extra ) : ''; ?>"
 		data-cargo="<?php echo esc_attr( $cargo ); ?>"
 		data-uf="<?php echo esc_attr( $uf ); ?>"
-		data-turno="<?php echo esc_attr( $turno ); ?>"
+		data-turno="<?php echo esc_attr( $turno_attr ); ?>"
 		data-limite="<?php echo esc_attr( $limite ); ?>"
 		data-atualizar="<?php echo esc_attr( $atualizar ); ?>">
 
 		<header class="apuracao__header">
 			<h2><?php echo esc_html( $rotulo_cargo ); ?></h2>
+			<?php echo $turno_selo(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 			<?php if ( ! $erro ) : ?>
 			<span class="tse-card-secao-pct"><?php echo esc_html( $dados['pct_apurado'] ?? '0%' ); ?> apurado</span>
 			<?php endif; ?>

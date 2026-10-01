@@ -2,9 +2,11 @@
 
 O que mudou em cada versão e por quê, da mais nova para a mais antiga. Comportamento permanente fica em [arquitetura.md](arquitetura.md); como validar, em [testes.md](testes.md). O que ainda está em aberto, em [../PENDENCIAS.md](../PENDENCIAS.md).
 
-## Não publicada — faixa de candidatos `[apuracao_candidatos_lista]`
+## Versão 2.7.0 — turno automático e faixa de candidatos
 
-Shortcode novo para a home, sem mudar a versão do plugin (2.6.1). Entrega uma faixa com kicker, título, link para a página de
+### Faixa de candidatos `[apuracao_candidatos_lista]`
+
+Shortcode novo para a home. Entrega uma faixa com kicker, título, link para a página de
 Apuração (a de Configuração → Navegação) e um carrossel de candidatos (foto, cargo, nome, partido), em cinza e ajustável por
 variáveis CSS `--ae-strip-*`. Os candidatos seguem o ranking do último snapshot válido da disputa (`ordem="ranking"`, padrão; `nome`
 é alfabética; `ids` fixa a ordem). `mostrar="votos"` (ou `percentual`) põe o percentual sob o nome, inclusive "0,00%" antes da apuração (`votos,percentual` acrescenta os votos absolutos; `absoluto`, só os votos), e
@@ -12,7 +14,33 @@ a faixa de uma disputa só (cargo + UF, ou presidente) se atualiza pela REST loc
 0 desliga), sem consultar o TSE. `layout="lista"` devolve só `<ul><li>`, sem CSS nem JS. CSS e JS (`ae-candidate-strip.*`) só
 carregam nas páginas que usam a faixa. Classe: `includes/class-candidate-list.php`.
 
-**Limite conhecido.** A faixa usa a disputa de referência do candidato (1º turno); no 2º turno vai precisar seguir o turno em andamento.
+**Limite conhecido (resolvido abaixo).** Antes do turno automático, a faixa usava a disputa de referência do candidato (1º turno).
+
+### Turno automático e seletor de turno
+
+Todos os widgets passam a seguir o **turno em andamento** de cada disputa (cargo + UF), sem edição manual. Classe nova:
+`includes/class-rounds.php` (`AE_Rounds::resolve`).
+
+- **Regra.** O 1º turno vale até o 2º ter um snapshot válido **com apuração iniciada** (`progress` diferente de `not_started`).
+  O EA11 divulga a disputa do 2º turno dias antes e a coleta pode gravar um snapshot zerado; trocar a vitrine por ele mostraria
+  zeros. Depois que o 2º turno entra, ele não volta. Quem não tem 2º turno (senador, deputados) fica no 1º.
+- **Padrão `turno="auto"`** em `[tse_apuracao]`, `[tse_apuracao_card]`, `[apuracao]` e nas disputas de `[tse_apuracao_resumo]`
+  (`cargo:uf` ou `cargo:uf:auto`). `turno="1"` ou `"2"` fixa o turno. A REST legada (`tse/v1/resultado`) aceita `turno=0`
+  (auto, o padrão) e a nova aceita `apuracao/v1/results/{eleicao}/auto/{cargo}/{abrangencia}`; ambas devolvem `turno` e `turnos`
+  (os turnos já com apuração).
+- **Troca ao vivo.** O polling de cada widget percebe a virada e troca o bloco sem recarregar: selo "2º turno" no cabeçalho,
+  saem os candidatos que não disputam o 2º turno, e o card de uma posição que deixou de existir some.
+- **Seletor de turno** no `[tse_apuracao]`, **por bloco**: aparece só quando há os dois turnos, troca por JS (sem recarregar) e
+  é um link real `?ae_turno=1|2` (funciona sem JS e ao compartilhar). O parâmetro só vale para blocos automáticos cuja disputa
+  tem aquele turno; os demais blocos o ignoram. Não há seletor global, porque o 2º turno é por cargo e UF.
+- **Faixa `[apuracao_candidatos_lista]`** (uma disputa só): no 2º turno mostra só os finalistas (candidatos da disputa do turno,
+  via `ae_candidate_contests`) com o selo "2º turno", e passa a se atualizar pela REST local mesmo sem `mostrar` (a virada
+  acontece ao vivo).
+- **Vários blocos iguais na mesma página** não conflitam: ids únicos, cada bloco só lê e escreve no próprio elemento, o seletor
+  de um não muda o outro. As requisições iguais são compartilhadas por 5 s (uma ida à REST, não uma por bloco).
+- **Resposta atrasada:** se o visitante troca de turno no seletor enquanto uma resposta antiga ainda vem, ela é descartada (achado pelo teste no navegador).
+- **Testes:** `tests/e2e/turno-browser.js` (Chromium real: a virada ao vivo, o seletor, blocos iguais e `?ae_turno`), `tests/wp-collect.php` (resolvedor, snapshot zerado não vira turno, REST `auto`, `?ae_turno`, seletor, faixa e ids
+  distintos) e `tests/wp-integration.php`.
 
 ## Versão 2.6.1 — a coleta arranca sem WP-Cron
 

@@ -15,7 +15,7 @@ final class AE_Shortcodes {
 	/** O WordPress entrega '' (string) quando o shortcode não tem atributos em versões antigas; por isso $atts não é tipado como array. */
 	public function render( $atts ): string {
 		$atts = is_array( $atts ) ? $atts : array();
-		$a = shortcode_atts( array( 'eleicao' => 'eleicoes-2026', 'turno' => 1, 'cargo' => '', 'abrangencia' => 'BR', 'titulo' => '' ), $atts, 'apuracao' );
+		$a = shortcode_atts( array( 'eleicao' => 'eleicoes-2026', 'turno' => 'auto', 'cargo' => '', 'abrangencia' => 'BR', 'titulo' => '' ), $atts, 'apuracao' );
 		if ( ! $a['cargo'] ) { return ''; }
 		$by_code = array_flip( TSE_API::CARGOS );
 		$code = (string) absint( $a['cargo'] );

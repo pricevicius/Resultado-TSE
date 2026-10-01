@@ -574,3 +574,11 @@
 .tse-resumo-rodape a{color:var(--tse-primary);font-size:14px;font-weight:600;text-decoration:none}
 .tse-resumo-rodape a:hover{text-decoration:underline}
 
+
+/* Turno: selo "2º turno" (todos os widgets) e seletor de turno do [tse_apuracao]. Só aparecem quando há 2º turno com apuração iniciada. */
+.tse-turno-selo{display:inline-block;margin-left:8px;padding:1px 8px;background:var(--tse-primary,#003366);color:#fff;font-size:11px;font-weight:700;letter-spacing:.06em;line-height:1.6;text-transform:uppercase;vertical-align:middle}
+.tse-turno-selo[hidden],.tse-turnos[hidden],.tse-card[hidden],.tse-resumo-cand[hidden]{display:none!important}
+.tse-turnos{display:flex;gap:6px;margin-top:8px}
+.tse-turno-opcao{padding:3px 12px;border:1px solid var(--tse-primary,#003366);color:var(--tse-primary,#003366);font-size:13px;font-weight:600;text-decoration:none}
+.tse-turno-opcao[aria-current]{background:var(--tse-primary,#003366);color:#fff}
+.tse-turno-opcao:hover,.tse-turno-opcao:focus-visible{text-decoration:underline}

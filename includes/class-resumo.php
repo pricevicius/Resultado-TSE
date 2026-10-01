@@ -24,6 +24,7 @@ final class AE_Resumo {
 			$row['candidatos'] = isset( $row['dados']['erro'] ) ? array() : array_slice( (array) ( $row['dados']['candidatos'] ?? array() ), 0, $limite );
 			$row['lider'] = $row['candidatos'][0] ?? null;
 			$row['rotulo'] = ucfirst( str_replace( '-', ' ', $row['cargo'] ) ) . ' · ' . strtoupper( $row['uf'] );
+			$row['turno_atual'] = (int) ( $row['dados']['turno'] ?? 1 );
 			$rows[] = $row;
 		}
 		$titulo = sanitize_text_field( $a['titulo'] );
@@ -40,9 +41,9 @@ final class AE_Resumo {
 
 	/**
 	 * "governador:sp,senador:sp:2" → lista de cargo/uf/turno. Cargo desconhecido é ignorado, o turno
-	 * é 1 ou 2 e o total é limitado a MAX_ROWS.
+	 * é 0 (automático, o padrão: segue o turno em andamento da disputa), 1 ou 2, e o total é limitado a MAX_ROWS.
 	 *
-	 * @return array<int,array{cargo:string,uf:string,turno:int}>
+	 * @return array<int,array{cargo:string,uf:string,turno:int}> turno 0 = automático
 	 */
 	public static function parse_disputas( string $disputas ): array {
 		$rows = array();
@@ -51,7 +52,7 @@ final class AE_Resumo {
 			$cargo = sanitize_title( $parts[0] ?? '' );
 			if ( '' === $cargo || ! isset( TSE_API::CARGOS[ $cargo ] ) ) { continue; }
 			$uf = strtolower( preg_replace( '/[^A-Za-z]/', '', (string) ( $parts[1] ?? 'br' ) ) ) ?: 'br';
-			$rows[] = array( 'cargo' => $cargo, 'uf' => substr( $uf, 0, 2 ), 'turno' => max( 1, min( 2, (int) ( $parts[2] ?? 1 ) ) ) );
+			$rows[] = array( 'cargo' => $cargo, 'uf' => substr( $uf, 0, 2 ), 'turno' => TSE_Shortcode::sanitize_turno( $parts[2] ?? 'auto' ) );
 			if ( count( $rows ) >= self::MAX_ROWS ) { break; }
 		}
 		return $rows;

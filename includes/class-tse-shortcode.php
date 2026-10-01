@@ -66,10 +66,27 @@ class TSE_Shortcode {
                 'cargo'   => [ 'sanitize_callback' => 'sanitize_text_field', 'default' => 'presidente' ],
                 'uf'      => [ 'sanitize_callback' => 'sanitize_text_field', 'default' => 'br' ],
                 'limite'  => [ 'sanitize_callback' => 'absint',              'default' => 10 ],
-				'turno'   => [ 'sanitize_callback' => 'absint',              'default' => 1 ],
+				'turno'   => [ 'sanitize_callback' => [ __CLASS__, 'sanitize_turno' ], 'default' => 0 ],
             ],
         ] );
     }
+
+	/**
+	 * ?ae_turno=1|2 (link do seletor, vale sem JavaScript e ao compartilhar). Só muda um bloco automático e só para um turno que
+	 * a disputa já tem com apuração iniciada; nos demais blocos (outro cargo/UF, turno fixo) o parâmetro é ignorado.
+	 */
+	private static function turno_da_url( int $turno, string $cargo, string $uf ): int {
+		if ( $turno > 0 || ! isset( $_GET['ae_turno'] ) ) { return $turno; } // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$wanted = absint( wp_unslash( $_GET['ae_turno'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$code   = TSE_API::CARGOS[ $cargo ] ?? $cargo;
+		$rounds = AE_Rounds::resolve( str_pad( (string) $code, 4, '0', STR_PAD_LEFT ), strtoupper( $uf ) );
+		return in_array( $wanted, $rounds['rounds'], true ) ? $wanted : 0;
+	}
+
+	/** 'auto' (ou vazio) vira 0 = turno em andamento; 1 e 2 valem como estão. */
+	public static function sanitize_turno( $value ): int {
+		return max( 0, min( 2, absint( $value ) ) );
+	}
 
     public static function rest_resultado( WP_REST_Request $request ): WP_REST_Response {
 		// Este e o endpoint que tse-live.js realmente fica consultando enquanto alguem
@@ -88,7 +105,7 @@ class TSE_Shortcode {
                 return new WP_REST_Response( $data, 502 );
             }
         } else {
-            $data = self::snapshot_resultado( $cargo, $uf, (int) $request->get_param( 'turno' ) ?: 1 );
+            $data = self::snapshot_resultado( $cargo, $uf, (int) $request->get_param( 'turno' ) );
             if ( isset( $data['erro'] ) ) {
                 return new WP_REST_Response( $data, 503 );
             }
@@ -121,7 +138,7 @@ class TSE_Shortcode {
      *   limite   = 10 (máx candidatos exibidos)
      *   atualizar= 60 (segundos; 0 = desligar auto-refresh)
      *   titulo   = "Resultado Presidente" (opcional)
-     *   turno    = 1|2
+     *   turno    = auto|1|2 (auto, o padrão, segue o turno em andamento da disputa)
      */
     public static function render( $atts ): string {
 		self::enqueue_widget_assets();
@@ -133,7 +150,7 @@ class TSE_Shortcode {
             'limite'    => 10,
             'atualizar' => 60,
             'titulo'    => $titulo_informado,
-            'turno'     => 1,
+            'turno'     => 'auto',
         ], $atts, 'tse_apuracao' );
 
         $cargo    = sanitize_text_field( $atts['cargo'] );
@@ -141,7 +158,8 @@ class TSE_Shortcode {
         $limite   = max( 1, (int) $atts['limite'] );
         $atualizar= max( 0, (int) $atts['atualizar'] );
         $titulo   = sanitize_text_field( $atts['titulo'] );
-		$turno    = max( 1, min( 2, (int) $atts['turno'] ) );
+		$turno    = self::sanitize_turno( $atts['turno'] ); // 0 = auto
+		$turno    = self::turno_da_url( $turno, $cargo, $uf );
 
         // Monta o ID único do widget para que o JS saiba o que atualizar
         $widget_id = 'tse-' . $cargo . '-' . $uf . '-' . uniqid();
@@ -177,7 +195,7 @@ class TSE_Shortcode {
      * Atributos:
      *   cargo    = presidente|governador|senador|deputado-federal|deputado-estadual|prefeito|vereador
      *   uf       = br|sp|rj|mg|... (sigla em minúsculas)
-     *   turno    = 1|2
+     *   turno    = auto|1|2 (auto, o padrão, segue o turno em andamento da disputa)
      *   limite   = 1 (quantos colocados mostrar; 1 = card grande só do líder, >1 = mini-lista)
      *   atualizar= 60 (segundos; 0 = desligar auto-refresh)
      *   titulo   = "Governador — Espírito Santo" (opcional; default é montado a partir de cargo/uf)
@@ -190,7 +208,7 @@ class TSE_Shortcode {
         $atts = shortcode_atts( [
             'cargo'     => 'presidente',
             'uf'        => 'br',
-            'turno'     => 1,
+            'turno'     => 'auto',
             'limite'    => 1,
             'atualizar' => 60,
             'titulo'    => $titulo_informado,
@@ -199,7 +217,7 @@ class TSE_Shortcode {
 
         $cargo       = sanitize_text_field( $atts['cargo'] );
         $uf          = strtolower( sanitize_text_field( $atts['uf'] ) );
-        $turno       = max( 1, min( 2, (int) $atts['turno'] ) );
+        $turno       = self::sanitize_turno( $atts['turno'] ); // 0 = auto
         $limite      = max( 1, (int) $atts['limite'] );
         $atualizar   = max( 0, (int) $atts['atualizar'] );
         $titulo      = sanitize_text_field( $atts['titulo'] );
@@ -219,6 +237,10 @@ class TSE_Shortcode {
     /** Compatibility adapter: the historical widget only reads materialized snapshots. */
     public static function snapshot_resultado( string $cargo, string $uf, int $turno ): array {
         $code = TSE_API::CARGOS[ $cargo ] ?? $cargo;
+		// turno 0 = automático: o turno em andamento desta disputa (ver AE_Rounds). 'turnos' lista os que já têm apuração iniciada.
+		$rounds = AE_Rounds::resolve( str_pad( (string) $code, 4, '0', STR_PAD_LEFT ), strtoupper( $uf ) );
+		$auto   = $turno < 1;
+		if ( $auto ) { $turno = $rounds['round']; }
         $data = AE_Results::instance()->latest(
             'eleicoes-' . ( get_option( 'tse_apuracao_settings', array() )['ano'] ?? AE_Plugin::default_election_year() ),
             max( 1, $turno ),
@@ -287,6 +309,8 @@ class TSE_Shortcode {
 			'votos_anulados' => (int) ( $totals['annulled_votes'] ?? 0 ),
 			'pct_votos_anulados' => round( (float) ( $totals['annulled_percentage'] ?? 0 ), 2 ),
             'turno' => (string) $turno,
+			'turnos' => $rounds['rounds'],
+			'turno_automatico' => $auto,
             'candidatos' => $candidates,
         );
     }

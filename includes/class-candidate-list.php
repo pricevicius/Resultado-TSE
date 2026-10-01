@@ -37,8 +37,15 @@ final class AE_Candidate_List {
 		$where = array( 'e.year=%d', 'c.removed_at IS NULL' ); $args = array( $year );
 		$code  = self::position_code( (string) $a['cargo'] );
 		if ( null === $code ) { return self::empty_notice( 'Cargo não reconhecido.' ); }
-		if ( '' !== $code ) { $where[] = 'ct.position_code=%s'; $args[] = $code; }
 		$scope = strtoupper( sanitize_key( $a['uf'] ) );
+		// Faixa de UMA disputa: segue o turno em andamento (AE_Rounds). Com 2º turno em curso, só entram os candidatos que o disputam.
+		$single = '' !== $code && ( '' !== $scope || '0001' === $code );
+		$round  = 1;
+		if ( $single ) {
+			$resolved = AE_Rounds::resolve( $code, '' !== $scope ? $scope : 'BR', $year );
+			$round    = $resolved['round'];
+		}
+		if ( '' !== $code ) { $where[] = 'ct.position_code=%s'; $args[] = $code; }
 		if ( '' !== $scope ) { $where[] = 'ct.scope_code=%s'; $args[] = $scope; }
 		if ( 'somente' === $photo ) { $where[] = "c.photo_url <> ''"; }
 		// Ordem do ranking da apuração (rank_no do último snapshot válido da disputa); sem snapshot, cai para o nome.
@@ -49,7 +56,10 @@ final class AE_Candidate_List {
 			$args    = array_merge( $args, $ids );
 			$order   = 'FIELD(c.external_id,' . implode( ',', array_fill( 0, count( $ids ), '%s' ) ) . '), ' . $order;
 		}
-		$sql = "SELECT c.external_id,c.ballot_name,c.full_name,c.ballot_number,c.party,c.photo_url,ct.position_code,ct.scope_code,ct.round_no,e.slug AS election_slug,r.votes,r.percentage,r.elected FROM {$p}candidates c INNER JOIN {$p}elections e ON e.id=c.election_id LEFT JOIN {$p}contests ct ON ct.id=c.contest_id LEFT JOIN {$p}result_rows r ON r.external_candidate_id=c.external_id AND r.snapshot_id=(SELECT s.id FROM {$p}snapshots s WHERE s.contest_id=c.contest_id AND s.status='valid' ORDER BY s.captured_at DESC, s.id DESC LIMIT 1) WHERE " . implode( ' AND ', $where ) . " ORDER BY {$order} LIMIT %d"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// Turno 1 (e faixas de várias disputas): a disputa de referência do candidato. Turno seguinte: a disputa daquele turno, via ae_candidate_contests.
+		$join = "LEFT JOIN {$p}contests ct ON ct.id=c.contest_id"; $cid = 'c.contest_id';
+		if ( $round > 1 ) { $join = "INNER JOIN {$p}candidate_contests cc ON cc.candidate_id=c.id INNER JOIN {$p}contests ct ON ct.id=cc.contest_id AND ct.round_no={$round}"; $cid = 'ct.id'; }
+		$sql = "SELECT c.external_id,c.ballot_name,c.full_name,c.ballot_number,c.party,c.photo_url,ct.position_code,ct.scope_code,ct.round_no,e.slug AS election_slug,r.votes,r.percentage,r.elected FROM {$p}candidates c INNER JOIN {$p}elections e ON e.id=c.election_id {$join} LEFT JOIN {$p}result_rows r ON r.external_candidate_id=c.external_id AND r.snapshot_id=(SELECT s.id FROM {$p}snapshots s WHERE s.contest_id={$cid} AND s.status='valid' ORDER BY s.captured_at DESC, s.id DESC LIMIT 1) WHERE " . implode( ' AND ', $where ) . " ORDER BY {$order} LIMIT %d"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$args = array_merge( $args, $ids ? $ids : array(), array( $limit ) );
 		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $args ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		if ( ! $rows ) { return self::empty_notice( 'Nenhum candidato encontrado para esse filtro.' ); }
@@ -59,13 +69,14 @@ final class AE_Candidate_List {
 		if ( $strip ) {
 			self::enqueue();
 			$kicker = null === $a['kicker'] ? 'Eleições ' . $year : (string) $a['kicker'];
-			$live   = ( $votes || $pct ) ? self::live_attrs( $rows[0], $code, $scope, absint( $a['atualizar'] ), $ranking && ! $ids ) : '';
+			$live   = $single ? self::live_attrs( $rows[0], $code, $scope, absint( $a['atualizar'] ), $ranking && ! $ids, $round ) : '';
 			$link   = null === $a['link'] ? self::results_url() : (string) $a['link'];
 			?>
 <section class="ae-strip" aria-label="<?php echo esc_attr( $a['titulo'] ?: 'Candidatos' ); ?>"<?php echo $live; ?>>
 	<header class="ae-strip-head">
 		<?php if ( '' !== $kicker ) : ?><p class="ae-strip-kicker"><?php echo esc_html( $kicker ); ?></p><?php endif; ?>
 		<?php if ( '' !== (string) $a['titulo'] ) : ?><h2 class="ae-strip-title"><?php echo esc_html( $a['titulo'] ); ?></h2><?php endif; ?>
+		<?php if ( $single ) : ?><span class="ae-strip-turno"<?php echo $round > 1 ? '' : ' hidden'; ?>><?php echo esc_html( $round > 1 ? $round . 'º turno' : '' ); ?></span><?php endif; ?>
 		<?php if ( '' !== $link && '' !== (string) $a['link_texto'] ) : ?><a class="ae-strip-link" href="<?php echo esc_url( $link ); ?>"><?php echo esc_html( $a['link_texto'] ); ?></a><?php endif; ?>
 	</header>
 	<div class="ae-strip-body">
@@ -107,14 +118,15 @@ final class AE_Candidate_List {
 
 	/**
 	 * Atributos data-* para a atualização ao vivo pela REST local (nunca o TSE). Só quando a faixa é de UMA disputa:
-	 * cargo definido e (uf informada ou presidente). Usa a eleição e o turno da disputa do primeiro candidato.
+	 * cargo definido e (uf informada ou presidente). A URL usa o turno "auto": quando o 2º turno começar, a REST passa a
+	 * devolver só os finalistas e o JS esconde os demais sem recarregar a página.
 	 */
-	private static function live_attrs( array $first, string $code, string $scope, int $interval, bool $reorder ): string {
+	private static function live_attrs( array $first, string $code, string $scope, int $interval, bool $reorder, int $round ): string {
 		if ( $interval < 1 || '' === $code || empty( $first['election_slug'] ) ) { return ''; }
 		$uf = '' !== $scope ? $scope : ( '0001' === $code ? 'BR' : '' );
 		if ( '' === $uf ) { return ''; }
-		$url = rest_url( 'apuracao/v1/results/' . rawurlencode( $first['election_slug'] ) . '/' . max( 1, (int) $first['round_no'] ) . '/' . $code . '/' . rawurlencode( $uf ) );
-		return ' data-live="' . esc_url( $url ) . '" data-intervalo="' . max( 15, $interval ) . '"' . ( $reorder ? ' data-reordenar="1"' : '' );
+		$url = rest_url( 'apuracao/v1/results/' . rawurlencode( $first['election_slug'] ) . '/auto/' . $code . '/' . rawurlencode( $uf ) );
+		return ' data-live="' . esc_url( $url ) . '" data-intervalo="' . max( 15, $interval ) . '" data-turno="' . $round . '"' . ( $reorder ? ' data-reordenar="1"' : '' );
 	}
 
 	/** CSS e JS do carrossel: só quando a faixa aparece (o JS vai ao rodapé). Sem JS, a faixa ainda rola com o dedo/mouse. */
