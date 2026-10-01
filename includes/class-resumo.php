@@ -9,16 +9,20 @@ defined( 'ABSPATH' ) || exit;
 final class AE_Resumo {
 	/** Quantas linhas, no máximo: o widget é um resumo, não a página de apuração. */
 	private const MAX_ROWS = 8;
+	/** Quantos candidatos por disputa, no máximo. */
+	private const MAX_LIMIT = 10;
 
 	public static function render( $atts ): string {
 		$site_uf = strtolower( (string) get_option( 'ae_site_uf', '' ) );
 		$default = 'presidente:br' . ( '' !== $site_uf ? ",governador:{$site_uf},senador:{$site_uf}" : '' );
-		$a = shortcode_atts( array( 'disputas' => $default, 'titulo' => 'Apuração', 'link' => '', 'link_texto' => 'Ver apuração completa', 'atualizar' => 60, 'classe' => '' ), is_array( $atts ) ? $atts : array(), 'tse_apuracao_resumo' );
+		$a = shortcode_atts( array( 'disputas' => $default, 'titulo' => 'Apuração', 'link' => '', 'link_texto' => 'Ver apuração completa', 'limite' => 3, 'atualizar' => 60, 'classe' => '' ), is_array( $atts ) ? $atts : array(), 'tse_apuracao_resumo' );
 		TSE_Shortcode::enqueue_widget_assets();
+		$limite = max( 1, min( self::MAX_LIMIT, (int) $a['limite'] ) );
 		$rows = array();
 		foreach ( self::parse_disputas( (string) $a['disputas'] ) as $row ) {
 			$row['dados'] = TSE_API::is_mock_mode() ? TSE_API::get_mock_resultado() : TSE_Shortcode::snapshot_resultado( $row['cargo'], $row['uf'], $row['turno'] );
-			$row['lider'] = isset( $row['dados']['erro'] ) ? null : ( $row['dados']['candidatos'][0] ?? null );
+			$row['candidatos'] = isset( $row['dados']['erro'] ) ? array() : array_slice( (array) ( $row['dados']['candidatos'] ?? array() ), 0, $limite );
+			$row['lider'] = $row['candidatos'][0] ?? null;
 			$row['rotulo'] = ucfirst( str_replace( '-', ' ', $row['cargo'] ) ) . ' · ' . strtoupper( $row['uf'] );
 			$rows[] = $row;
 		}

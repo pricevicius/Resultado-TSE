@@ -14,27 +14,32 @@
 		if ( el && text !== undefined && el.textContent !== text ) el.textContent = text;
 	}
 
-	function applyRow( item, data ) {
-		const lider = ( data.candidatos || [] )[ 0 ];
-		item.dataset.status = data.status || '';
-		item.dataset.atrasado = data.atrasado ? '1' : '';
-		if ( ! lider ) return;
-		const aguardando = item.querySelector( '.tse-resumo-aguardando' );
-		if ( aguardando ) { window.location.reload(); return; } // primeira vez que chega dado: o markup é outro
-		setText( item, '.tse-resumo-nome', lider.nome );
-		setText( item, '.tse-resumo-partido', lider.partido );
-		setText( item, '.tse-resumo-pct', lider.percentual );
-		setText( item, '.tse-resumo-apurado', ( data.pct_apurado || '0%' ) + ' apurado' );
-		item.classList.toggle( 'tse-eleito', Boolean( lider.eleito ) );
-		const lideraEl = item.querySelector( '.tse-resumo-lider' );
-		let badge = item.querySelector( '.tse-badge-eleito' );
-		if ( lider.eleito && ! badge && lideraEl ) {
+	function applyCand( li, cand ) {
+		setText( li, '.tse-resumo-nome', cand.nome );
+		setText( li, '.tse-resumo-partido', cand.partido );
+		setText( li, '.tse-resumo-pct', cand.percentual );
+		li.classList.toggle( 'tse-eleito', Boolean( cand.eleito ) );
+		const lideraEl = li.querySelector( '.tse-resumo-lider' );
+		let badge = li.querySelector( '.tse-badge-eleito' );
+		if ( cand.eleito && ! badge && lideraEl ) {
 			badge = document.createElement( 'span' );
 			badge.className = 'tse-badge-eleito';
 			badge.textContent = 'Eleito';
 			lideraEl.appendChild( document.createTextNode( ' ' ) );
 			lideraEl.appendChild( badge );
-		} else if ( ! lider.eleito && badge ) { badge.remove(); }
+		} else if ( ! cand.eleito && badge ) { badge.remove(); }
+	}
+
+	function applyRow( item, data ) {
+		const candidatos = data.candidatos || [];
+		item.dataset.status = data.status || '';
+		item.dataset.atrasado = data.atrasado ? '1' : '';
+		if ( ! candidatos.length ) return;
+		if ( item.querySelector( '.tse-resumo-aguardando' ) ) { window.location.reload(); return; } // primeira vez que chega dado: o markup é outro
+		const itens = Array.from( item.querySelectorAll( '.tse-resumo-cand' ) );
+		if ( candidatos.length > itens.length ) { window.location.reload(); return; } // entrou candidato novo: o markup mudou
+		itens.forEach( ( li, i ) => { if ( candidatos[ i ] ) applyCand( li, candidatos[ i ] ); } );
+		setText( item, '.tse-resumo-apurado', ( data.pct_apurado || '0%' ) + ' apurado' );
 	}
 
 	function refreshState( widget ) {
@@ -53,7 +58,7 @@
 
 	function update( widget ) {
 		const jobs = Array.from( widget.querySelectorAll( '.tse-resumo-item' ) ).map( item => {
-			const url = `${ restUrl }?cargo=${ encodeURIComponent( item.dataset.cargo ) }&uf=${ encodeURIComponent( item.dataset.uf ) }&turno=${ item.dataset.turno || 1 }&limite=1`;
+			const url = `${ restUrl }?cargo=${ encodeURIComponent( item.dataset.cargo ) }&uf=${ encodeURIComponent( item.dataset.uf ) }&turno=${ item.dataset.turno || 1 }&limite=${ parseInt( item.dataset.limite, 10 ) || 1 }`;
 			return fetch( url, { headers: { 'X-WP-Nonce': nonce } } )
 				.then( r => r.ok ? r.json() : Promise.reject( r.status ) )
 				.then( data => applyRow( item, data ) )

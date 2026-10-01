@@ -1,7 +1,7 @@
 <?php
 /**
  * Widget simples — [tse_apuracao_resumo]. Variáveis vindas de AE_Resumo::render():
- * $widget_id, $titulo, $rows, $estado, $link, $link_texto, $atualizar, $classe.
+ * $widget_id, $titulo, $rows (cada uma com 'candidatos'), $limite, $estado, $link, $link_texto, $atualizar, $classe.
  */
 defined( 'ABSPATH' ) || exit;
 ?>
@@ -15,11 +15,17 @@ defined( 'ABSPATH' ) || exit;
 	<?php else : ?>
 	<ul class="tse-resumo-lista">
 		<?php foreach ( $rows as $row ) : $lider = $row['lider']; $dados = $row['dados']; ?>
-		<li class="tse-resumo-item<?php echo $lider && ! empty( $lider['eleito'] ) ? ' tse-eleito' : ''; ?>" data-cargo="<?php echo esc_attr( $row['cargo'] ); ?>" data-uf="<?php echo esc_attr( $row['uf'] ); ?>" data-turno="<?php echo esc_attr( (string) $row['turno'] ); ?>">
+		<li class="tse-resumo-item" data-cargo="<?php echo esc_attr( $row['cargo'] ); ?>" data-uf="<?php echo esc_attr( $row['uf'] ); ?>" data-turno="<?php echo esc_attr( (string) $row['turno'] ); ?>" data-limite="<?php echo esc_attr( (string) $limite ); ?>">
 			<span class="tse-resumo-disputa"><?php echo esc_html( $row['rotulo'] ); ?></span>
 			<?php if ( $lider ) : ?>
-			<span class="tse-resumo-lider"><strong class="tse-resumo-nome"><?php echo esc_html( $lider['nome'] ); ?></strong> <span class="tse-resumo-partido"><?php echo esc_html( $lider['partido'] ); ?></span><?php if ( ! empty( $lider['eleito'] ) ) : ?> <span class="tse-badge-eleito">Eleito</span><?php endif; ?></span>
-			<span class="tse-resumo-pct"><?php echo esc_html( $lider['percentual'] ); ?></span>
+			<ol class="tse-resumo-candidatos">
+				<?php foreach ( $row['candidatos'] as $cand ) : ?>
+				<li class="tse-resumo-cand<?php echo ! empty( $cand['eleito'] ) ? ' tse-eleito' : ''; ?>">
+					<span class="tse-resumo-lider"><strong class="tse-resumo-nome"><?php echo esc_html( $cand['nome'] ); ?></strong> <span class="tse-resumo-partido"><?php echo esc_html( $cand['partido'] ); ?></span><?php if ( ! empty( $cand['eleito'] ) ) : ?> <span class="tse-badge-eleito">Eleito</span><?php endif; ?></span>
+					<span class="tse-resumo-pct"><?php echo esc_html( $cand['percentual'] ); ?></span>
+				</li>
+				<?php endforeach; ?>
+			</ol>
 			<span class="tse-resumo-apurado"><?php echo esc_html( ( $dados['pct_apurado'] ?? '0%' ) . ' apurado' ); ?></span>
 			<?php else : ?>
 			<span class="tse-resumo-lider tse-resumo-aguardando">Aguardando apuração</span>
