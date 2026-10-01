@@ -1,4 +1,5 @@
-/* Botões anterior/próximo da faixa de candidatos. Sem JS a lista continua rolável; os botões só aparecem se houver o que rolar. */
+/* Faixa de candidatos: botões anterior/próximo (só aparecem se houver o que rolar; sem JS a lista continua rolável) e, quando a faixa
+ * mostra votos de uma disputa, atualização pela REST local (data-live), sem recarregar a página. */
 (function () {
 	'use strict';
 	function init( strip ) {
@@ -20,6 +21,39 @@
 		window.addEventListener( 'resize', update );
 		update();
 	}
-	function ready() { Array.prototype.forEach.call( document.querySelectorAll( '.ae-strip' ), init ); }
+	function fmt( n, d ) { return Number( n ).toLocaleString( 'pt-BR', { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 } ); }
+	function live( strip ) {
+		var url = strip.getAttribute( 'data-live' );
+		var list = strip.querySelector( '.ae-candidate-list' );
+		if ( ! url || ! list || ! window.fetch ) { return; }
+		function refresh() {
+			fetch( url ).then( function ( r ) { return r.ok ? r.json() : Promise.reject(); } ).then( function ( data ) {
+				var byId = {};
+				( data.candidates || [] ).forEach( function ( c ) { byId[ c.external_candidate_id ] = c; } );
+				Array.prototype.forEach.call( list.querySelectorAll( '.ae-candidate-item' ), function ( li ) {
+					var c = byId[ li.getAttribute( 'data-id' ) ];
+					var el = li.querySelector( '.ae-candidate-votes' );
+					if ( ! c || ! el ) { return; }
+					var votes = parseInt( c.votes, 10 ) || 0;
+					var showVotes = el.hasAttribute( 'data-votos' );
+					var showPct = el.hasAttribute( 'data-pct' );
+					var parts = [];
+					if ( showVotes ) { parts.push( fmt( votes ) + ( 1 === votes ? ' voto' : ' votos' ) ); }
+					if ( showPct ) { parts.push( fmt( parseFloat( c.percentage ) || 0, 2 ) + '%' ); }
+					if ( Number( c.elected ) ) { parts.push( 'Eleito' ); }
+					el.textContent = parts.join( ' · ' );
+				} );
+				if ( strip.hasAttribute( 'data-reordenar' ) ) {
+					( data.candidates || [] ).forEach( function ( c ) {
+						var li = list.querySelector( '.ae-candidate-item[data-id="' + c.external_candidate_id + '"]' );
+						if ( li ) { list.appendChild( li ); }
+					} );
+				}
+			} ).catch( function () { /* mantém o que está na tela */ } );
+		}
+		setInterval( refresh, ( parseInt( strip.getAttribute( 'data-intervalo' ), 10 ) || 60 ) * 1000 );
+		document.addEventListener( 'visibilitychange', function () { if ( 'visible' === document.visibilityState ) { refresh(); } } );
+	}
+	function ready() { Array.prototype.forEach.call( document.querySelectorAll( '.ae-strip' ), function ( strip ) { init( strip ); live( strip ); } ); }
 	if ( 'loading' === document.readyState ) { document.addEventListener( 'DOMContentLoaded', ready ); } else { ready(); }
 })();
