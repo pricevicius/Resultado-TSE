@@ -69,6 +69,8 @@ final class AE_Plugin {
 	}
 
 	public function register_blocks(): void {
+		// WordPress antigo (antes do 5.5) não tem blocos por pasta/block.json; nele o shortcode cobre o mesmo uso.
+		if ( ! function_exists( 'register_block_type_from_metadata' ) ) { return; }
 		register_block_type( AE_DIR . 'blocks/apuracao' );
 	}
 

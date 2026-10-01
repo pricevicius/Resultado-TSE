@@ -1,2 +1,3 @@
 # A skill do Claude Code não é código de execução do plugin: fica fora de pacotes gerados com git archive.
 .claude export-ignore
+tools export-ignore
