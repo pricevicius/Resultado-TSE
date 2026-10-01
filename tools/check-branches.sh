@@ -16,11 +16,10 @@ TMP=$(mktemp -d); trap 'git worktree prune; rm -rf "$TMP"' EXIT
 # 1) commits da main que faltam na php7.4. Compara pelo assunto (o cherry-pick com conflito de cabeçalho muda o patch-id,
 #    então git cherry daria falso alarme). Só olha os commits que a php7.4 ainda não alcança pela história comum.
 base=$(git merge-base main php7.4)
-missing=0
-for subject in $(git log --format=%H "$base"..main | while read h; do git log -1 --format=%s "$h" | tr ' ' '_'; done); do
-	s=$(echo "$subject" | tr '_' ' ')
-	git log --format=%s "$base"..php7.4 | grep -qxF "$s" || { echo "  falta na php7.4: $s" >&2; missing=$((missing + 1)); }
-done
+git log --format=%s "$base"..php7.4 > "$TMP/subjects74"
+git log --format=%s "$base"..main > "$TMP/subjects-main"
+missing=$(grep -vxFf "$TMP/subjects74" "$TMP/subjects-main" | tee "$TMP/missing" | wc -l | tr -d ' ')
+[ "$missing" = 0 ] || sed 's/^/  falta na php7.4: /' "$TMP/missing" >&2
 [ "$missing" = 0 ] && echo "ok   php7.4 contém todos os commits da main (por assunto)" || bad "$missing commit(s) da main sem equivalente na php7.4"
 
 # 2) php7.2 == port(php7.4)
