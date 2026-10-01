@@ -2,7 +2,7 @@
 defined( 'ABSPATH' ) || exit;
 
 final class AE_Schema {
-	public const VERSION = '2.0.3';
+	public const VERSION = '2.0.4';
 
 	/** Checks both the migration marker and the physical tables before use. */
 	public static function is_ready(): bool {
@@ -13,6 +13,22 @@ final class AE_Schema {
 			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $p . $table ) ) !== $p . $table ) { return false; }
 		}
 		return self::VERSION === get_option( 'ae_schema_version' );
+	}
+
+	/**
+	 * Tabelas do plugin que não são InnoDB. A gravação do snapshot (snapshot + ranking) roda numa
+	 * transação; em MyISAM o ROLLBACK não desfaz nada e uma interrupção deixaria um snapshot parcial.
+	 *
+	 * @return string[] Nomes completos das tabelas fora do InnoDB (vazio quando está tudo certo).
+	 */
+	public static function non_innodb_tables(): array {
+		global $wpdb;
+		$rows = $wpdb->get_results( $wpdb->prepare( 'SELECT TABLE_NAME AS name, ENGINE AS engine FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE %s', $wpdb->esc_like( $wpdb->prefix . 'ae_' ) . '%' ) );
+		$bad = array();
+		foreach ( (array) $rows as $row ) {
+			if ( 'innodb' !== strtolower( (string) $row->engine ) ) { $bad[] = (string) $row->name; }
+		}
+		return $bad;
 	}
 
 	public static function install(): void {
@@ -66,6 +82,7 @@ final class AE_Schema {
 				photo_url varchar(500) NULL,
 				data_json longtext NULL,
 				updated_at datetime NOT NULL,
+				removed_at datetime NULL,
 				PRIMARY KEY  (id),
 				UNIQUE KEY election_candidate (election_id,external_id),
 				KEY contest_number (contest_id,ballot_number),

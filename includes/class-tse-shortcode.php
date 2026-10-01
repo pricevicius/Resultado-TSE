@@ -31,6 +31,14 @@ class TSE_Shortcode {
         );
 
         wp_enqueue_script(
+            'tse-resumo',
+            TSE_APURACAO_URL . 'assets/js/tse-resumo.js',
+            [ 'tse-live' ],
+            TSE_APURACAO_VERSION,
+            true
+        );
+
+        wp_enqueue_script(
             'tse-live',
             TSE_APURACAO_URL . 'assets/js/tse-live.js',
             [],
@@ -209,10 +217,10 @@ class TSE_Shortcode {
     }
 
     /** Compatibility adapter: the historical widget only reads materialized snapshots. */
-    private static function snapshot_resultado( string $cargo, string $uf, int $turno ): array {
+    public static function snapshot_resultado( string $cargo, string $uf, int $turno ): array {
         $code = TSE_API::CARGOS[ $cargo ] ?? $cargo;
         $data = AE_Results::instance()->latest(
-            'eleicoes-2026',
+            'eleicoes-' . ( get_option( 'tse_apuracao_settings', array() )['ano'] ?? AE_Plugin::default_election_year() ),
             max( 1, $turno ),
             str_pad( (string) $code, 4, '0', STR_PAD_LEFT ),
             strtoupper( $uf )
@@ -220,7 +228,7 @@ class TSE_Shortcode {
 		if ( ! $data || empty( $data['snapshot'] ) ) {
 			global $wpdb;
 			$p = $wpdb->prefix . 'ae_';
-			$slug = $wpdb->get_var( $wpdb->prepare( "SELECT e.slug FROM {$p}elections e INNER JOIN {$p}contests c ON c.election_id=e.id INNER JOIN {$p}snapshots s ON s.contest_id=c.id WHERE e.year=%d AND c.round_no=%d AND c.position_code=%s AND c.scope_code=%s AND s.status='valid' ORDER BY s.id DESC LIMIT 1", 2026, max( 1, $turno ), str_pad( (string) $code, 4, '0', STR_PAD_LEFT ), strtoupper( $uf ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$slug = $wpdb->get_var( $wpdb->prepare( "SELECT e.slug FROM {$p}elections e INNER JOIN {$p}contests c ON c.election_id=e.id INNER JOIN {$p}snapshots s ON s.contest_id=c.id WHERE e.year=%d AND c.round_no=%d AND c.position_code=%s AND c.scope_code=%s AND s.status='valid' ORDER BY s.id DESC LIMIT 1", (int) ( get_option( 'tse_apuracao_settings', array() )['ano'] ?? AE_Plugin::default_election_year() ), max( 1, $turno ), str_pad( (string) $code, 4, '0', STR_PAD_LEFT ), strtoupper( $uf ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			if ( $slug ) { $data = AE_Results::instance()->latest( $slug, max( 1, $turno ), str_pad( (string) $code, 4, '0', STR_PAD_LEFT ), strtoupper( $uf ) ); }
 		}
         if ( ! $data || empty( $data['snapshot'] ) ) {

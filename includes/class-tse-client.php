@@ -26,21 +26,65 @@ final class AE_TSE_Client {
 			$batch = array_slice( $items, $offset, 250 ); $complete = $offset + count( $batch ) >= count( $items );
 		}
 		global $wpdb; $table = $wpdb->prefix . 'ae_candidates'; $now = current_time( 'mysql', true );
+		// Estado da importação que viaja no cursor: quando começou, quantas linhas entraram e a geração mais recente do CSV.
+		$started = (string) ( $cursor['started_at'] ?? $now );
+		$imported = absint( $cursor['imported'] ?? 0 ) + count( $batch );
+		$generated = (string) ( $cursor['generated_at'] ?? '' );
 		foreach ( $batch as $row ) {
 			if ( ! is_array( $row ) ) { continue; }
 			$external = sanitize_text_field( (string) ( $row['id'] ?? $row['SQ_CANDIDATO'] ?? $row['sq_CANDIDATO'] ?? '' ) );
 			if ( '' === $external ) { continue; }
 			$contest_id = absint( $row['contest_id'] ?? 0 ) ?: $this->contest_for_candidate_row( $election_id, $row );
-			$data = array( 'election_id' => $election_id, 'external_id' => $external, 'contest_id' => $contest_id ?: null, 'ballot_name' => sanitize_text_field( $row['NM_URNA_CANDIDATO'] ?? $row['nm_URNA_CANDIDATO'] ?? $row['nomeUrna'] ?? '' ), 'full_name' => sanitize_text_field( $row['NM_CANDIDATO'] ?? $row['nm_CANDIDATO'] ?? $row['nomeCompleto'] ?? '' ), 'ballot_number' => sanitize_text_field( (string) ( $row['NR_CANDIDATO'] ?? $row['nr_CANDIDATO'] ?? $row['numero'] ?? '' ) ), 'party' => sanitize_text_field( $row['SG_PARTIDO'] ?? $row['sg_PARTIDO'] ?? $row['partido'] ?? '' ), 'situation' => AE_Candidate_Catalog::clean_value( sanitize_text_field( $row['DS_SITUACAO_CANDIDATURA'] ?? $row['ds_SITUACAO_CANDIDATURA'] ?? $row['situacao'] ?? '' ) ), 'photo_url' => esc_url_raw( $row['urlFoto'] ?? '' ), 'data_json' => wp_json_encode( $row ), 'updated_at' => $now );
+			$data = array( 'election_id' => $election_id, 'external_id' => $external, 'contest_id' => $contest_id ?: null, 'ballot_name' => sanitize_text_field( $row['NM_URNA_CANDIDATO'] ?? $row['nm_URNA_CANDIDATO'] ?? $row['nomeUrna'] ?? '' ), 'full_name' => sanitize_text_field( $row['NM_CANDIDATO'] ?? $row['nm_CANDIDATO'] ?? $row['nomeCompleto'] ?? '' ), 'ballot_number' => sanitize_text_field( (string) ( $row['NR_CANDIDATO'] ?? $row['nr_CANDIDATO'] ?? $row['numero'] ?? '' ) ), 'party' => sanitize_text_field( $row['SG_PARTIDO'] ?? $row['sg_PARTIDO'] ?? $row['partido'] ?? '' ), 'situation' => AE_Candidate_Catalog::clean_value( sanitize_text_field( $row['DS_SITUACAO_CANDIDATURA'] ?? $row['ds_SITUACAO_CANDIDATURA'] ?? $row['situacao'] ?? '' ) ), 'photo_url' => esc_url_raw( $row['urlFoto'] ?? '' ), 'data_json' => wp_json_encode( $row ), 'updated_at' => $now, 'removed_at' => null );
+			$stamp = $this->csv_generated_at( $row ); if ( $stamp > $generated ) { $generated = $stamp; }
 			$existing = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$table} WHERE election_id=%d AND external_id=%s", $election_id, $external ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			// Sem disputa encontrada, não apaga o vínculo que o EA20 já tenha gravado.
 			if ( $existing ) { unset( $data['election_id'], $data['external_id'] ); if ( ! $contest_id ) { unset( $data['contest_id'] ); } $wpdb->update( $table, $data, array( 'id' => (int) $existing ) ); }
 			else { $wpdb->insert( $table, $data ); }
 		}
 		AE_Logger::write( 'info', 'candidate_import_page', array( 'job_id' => $job_id, 'offset' => $offset, 'count' => count( $batch ) ) );
-		$next_cursor = $batch_data['cursor'] ?? array( 'offset' => $offset + count( $batch ) );
-		if ( $complete ) { $this->cleanup_import_file( $job_id ); }
+		$next_cursor = ( $batch_data['cursor'] ?? array( 'offset' => $offset + count( $batch ) ) ) + array( 'started_at' => $started, 'imported' => $imported, 'generated_at' => $generated );
+		if ( $complete ) {
+			// Sem nenhuma linha lida (arquivo vazio ou filtro que não casou), não marca ninguém como removido.
+			$removed = $imported > 0 ? $this->mark_missing_candidates( $election_id, $started, $ufs, $cargos ) : 0;
+			update_option( 'ae_last_import', array( 'job_id' => $job_id, 'election_id' => $election_id, 'started_at' => $started, 'finished_at' => $now, 'rows' => $imported, 'csv_generated_at' => $generated, 'ufs' => $ufs, 'cargos' => $cargos, 'removed' => $removed ), false );
+			AE_Logger::write( 'info', 'candidate_import_done', array( 'job_id' => $job_id, 'rows' => $imported, 'removed' => $removed, 'csv_generated_at' => $generated ) );
+			$this->cleanup_import_file( $job_id );
+		}
 		return array( 'complete' => $complete, 'cursor' => $next_cursor );
+	}
+
+	/** Data e hora de geração do CSV (DT_GERACAO + HH_GERACAO, horário de Brasília) no formato Y-m-d H:i:s; '' se a linha não traz. */
+	private function csv_generated_at( array $row ): string {
+		$stamp = DateTime::createFromFormat( 'd/m/Y H:i:s', trim( (string) ( $row['DT_GERACAO'] ?? '' ) ) . ' ' . trim( (string) ( $row['HH_GERACAO'] ?? '' ) ) );
+		return $stamp ? $stamp->format( 'Y-m-d H:i:s' ) : '';
+	}
+
+	/**
+	 * Marca como "não consta mais" o candidato que veio de um CSV anterior, está no escopo desta
+	 * importação e não apareceu nela (renúncia, substituição). Não apaga: o cadastro e os resultados
+	 * continuam; só o catálogo avisa. Só entra quem veio de CSV (data_json com SQ_CANDIDATO): quem foi
+	 * criado só pelo EA20 não tem lista de origem para comparar.
+	 *
+	 * @param string[] $ufs    UFs importadas (vazio = todas).
+	 * @param string[] $cargos CD_CARGO importados (vazio = todos).
+	 * @return int Quantos candidatos foram marcados.
+	 */
+	private function mark_missing_candidates( int $election_id, string $started, array $ufs, array $cargos ): int {
+		global $wpdb; $p = $wpdb->prefix . 'ae_';
+		$where = array( 'c.election_id=%d', 'c.removed_at IS NULL', 'c.updated_at < %s', 'c.data_json LIKE %s' );
+		$args = array( current_time( 'mysql', true ), $election_id, $started, '%"SQ_CANDIDATO"%' );
+		if ( $ufs ) {
+			$scopes = in_array( '1', $cargos, true ) ? array_merge( $ufs, array( 'BR' ) ) : $ufs;
+			$where[] = 'ct.scope_code IN (' . implode( ',', array_fill( 0, count( $scopes ), '%s' ) ) . ')';
+			$args = array_merge( $args, $scopes );
+		}
+		if ( $cargos ) {
+			$where[] = 'CAST(ct.position_code AS UNSIGNED) IN (' . implode( ',', array_fill( 0, count( $cargos ), '%d' ) ) . ')';
+			$args = array_merge( $args, array_map( 'absint', $cargos ) );
+		}
+		$sql = "UPDATE {$p}candidates c INNER JOIN {$p}contests ct ON ct.id=c.contest_id SET c.removed_at=%s WHERE " . implode( ' AND ', $where ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return (int) $wpdb->query( $wpdb->prepare( $sql, $args ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 	}
 
 	/** Cargos de titular do CSV de candidatos (CD_CARGO): Presidente, Governador, Senador, Dep. Federal, Estadual e Distrital. Vice (2, 4) e suplentes (9, 10) ficam de fora. */
@@ -100,11 +144,8 @@ final class AE_TSE_Client {
 			$inserted = $wpdb->insert( $p . 'snapshots', array( 'contest_id' => $contest_id, 'source' => $kind, 'source_url' => $url, 'source_sha256' => $sha, 'captured_at' => $now, 'generated_at' => $normalized['generated_at'], 'sequence_no' => $sequence, 'status' => 'valid', 'totals_json' => wp_json_encode( $normalized['totals'] ), 'raw_json' => wp_json_encode( $raw ), 'valid_until' => gmdate( 'Y-m-d H:i:s', time() + 3600 ) ), array( '%d','%s','%s','%s','%s','%s','%d','%s','%s','%s','%s' ) );
 			if ( false === $inserted ) { throw new RuntimeException( 'Falha ao gravar o snapshot.' ); }
 			$snapshot_id = (int) $wpdb->insert_id;
-			foreach ( $normalized['candidates'] as $candidate ) {
-				$candidate_id = $this->upsert_result_candidate( $contest_id, $candidate, $url );
-				// Nome/partido gravados aqui tambem (nao so via candidate_id) pra sobreviver mesmo se o cadastro em ae_candidates ainda nao existir ou for reimportado depois.
-				if ( false === $wpdb->insert( $p . 'result_rows', array( 'snapshot_id' => $snapshot_id, 'candidate_id' => $candidate_id ? (int) $candidate_id : null, 'external_candidate_id' => $candidate['external_id'], 'rank_no' => $candidate['rank'], 'votes' => $candidate['votes'], 'percentage' => $candidate['percentage'], 'elected' => $candidate['elected'], 'situation' => $candidate['situation'], 'ballot_name' => $candidate['ballot_name'], 'full_name' => $candidate['full_name'], 'ballot_number' => $candidate['ballot_number'], 'party' => $candidate['party'] ), array( '%d','%d','%s','%d','%d','%f','%d','%s','%s','%s','%s','%s' ) ) ) { throw new RuntimeException( 'Falha ao gravar o ranking do snapshot.' ); }
-			}
+			$candidate_ids = $this->upsert_result_candidates( $contest_id, $normalized['candidates'], $url );
+			$this->insert_result_rows( $snapshot_id, $normalized['candidates'], $candidate_ids );
 			$wpdb->query( 'COMMIT' );
 		} catch ( Throwable $e ) {
 			$wpdb->query( 'ROLLBACK' );
@@ -235,17 +276,71 @@ final class AE_TSE_Client {
 		return $official_shape || $legacy_shape;
 	}
 
-	private function upsert_result_candidate( int $contest_id, array $candidate, string $source_url ): int {
+	/**
+	 * Cadastra/atualiza os candidatos de um snapshot com poucas queries: uma para a eleição, uma
+	 * SELECT por lote de ids e um UPDATE só para quem de fato mudou (antes eram 3 a 4 queries por
+	 * candidato, e um Deputado Federal de SP tem mais de mil). Campos vazios do EA20 nunca apagam o
+	 * cadastro vindo do CSV.
+	 *
+	 * @param array<int,array<string,mixed>> $candidates Candidatos normalizados.
+	 * @return array<string,int> external_id => id em ae_candidates (0 se não há eleição).
+	 */
+	private function upsert_result_candidates( int $contest_id, array $candidates, string $source_url ): array {
 		global $wpdb;
 		$p = $wpdb->prefix . 'ae_';
 		$election_id = absint( $wpdb->get_var( $wpdb->prepare( "SELECT election_id FROM {$p}contests WHERE id=%d", $contest_id ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		if ( ! $election_id ) { return 0; }
+		$ids = array();
+		if ( ! $election_id ) {
+			foreach ( $candidates as $candidate ) { $ids[ (string) $candidate['external_id'] ] = 0; }
+			return $ids;
+		}
 		$table = $p . 'candidates';
-		$id = (int) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$table} WHERE election_id=%d AND external_id=%s", $election_id, $candidate['external_id'] ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$data = array( 'contest_id' => $contest_id, 'ballot_name' => $candidate['ballot_name'], 'full_name' => $candidate['full_name'], 'ballot_number' => $candidate['ballot_number'], 'party' => $candidate['party'], 'situation' => $candidate['situation'], 'photo_url' => $this->photo_url( $source_url, $candidate['external_id'] ), 'updated_at' => current_time( 'mysql', true ) );
-		if ( $id ) { $wpdb->update( $table, array_filter( $data, static fn( $value ) => null !== $value && '' !== $value ), array( 'id' => $id ) ); return $id; }
-		$data['election_id'] = $election_id; $data['external_id'] = $candidate['external_id']; $data['data_json'] = wp_json_encode( array( 'source' => 'EA20' ) );
-		$wpdb->insert( $table, $data ); return (int) $wpdb->insert_id;
+		$existing = array();
+		foreach ( array_chunk( array_map( static fn( array $c ): string => (string) $c['external_id'], $candidates ), 500 ) as $chunk ) {
+			$marks = implode( ',', array_fill( 0, count( $chunk ), '%s' ) );
+			$found = $wpdb->get_results( $wpdb->prepare( "SELECT id,external_id,contest_id,ballot_name,full_name,ballot_number,party,situation,photo_url FROM {$table} WHERE election_id=%d AND external_id IN ({$marks})", array_merge( array( $election_id ), $chunk ) ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared
+			foreach ( (array) $found as $row ) { $existing[ (string) $row['external_id'] ] = $row; }
+		}
+		$now = current_time( 'mysql', true );
+		foreach ( $candidates as $candidate ) {
+			$external = (string) $candidate['external_id'];
+			$data = array( 'contest_id' => $contest_id, 'ballot_name' => $candidate['ballot_name'], 'full_name' => $candidate['full_name'], 'ballot_number' => $candidate['ballot_number'], 'party' => $candidate['party'], 'situation' => $candidate['situation'], 'photo_url' => $this->photo_url( $source_url, $external ) );
+			$current = $existing[ $external ] ?? null;
+			if ( $current ) {
+				$changes = array_filter( $data, static fn( $value ) => null !== $value && '' !== $value );
+				foreach ( $changes as $field => $value ) { if ( (string) $current[ $field ] === (string) $value ) { unset( $changes[ $field ] ); } }
+				if ( $changes ) { $wpdb->update( $table, $changes + array( 'updated_at' => $now ), array( 'id' => (int) $current['id'] ) ); }
+				$ids[ $external ] = (int) $current['id'];
+				continue;
+			}
+			$wpdb->insert( $table, $data + array( 'election_id' => $election_id, 'external_id' => $external, 'data_json' => wp_json_encode( array( 'source' => 'EA20' ) ), 'updated_at' => $now ) );
+			$ids[ $external ] = (int) $wpdb->insert_id;
+		}
+		return $ids;
+	}
+
+	/**
+	 * Grava o ranking do snapshot em INSERTs de várias linhas (200 por query). Nome/partido vão
+	 * junto para o ranking sobreviver mesmo se o cadastro em ae_candidates ainda não existir ou
+	 * for reimportado depois.
+	 *
+	 * @param array<int,array<string,mixed>> $candidates   Candidatos normalizados, na ordem do TSE.
+	 * @param array<string,int>              $candidate_ids external_id => id em ae_candidates.
+	 */
+	private function insert_result_rows( int $snapshot_id, array $candidates, array $candidate_ids ): void {
+		global $wpdb;
+		$table = $wpdb->prefix . 'ae_result_rows';
+		foreach ( array_chunk( $candidates, 200 ) as $chunk ) {
+			$values = array();
+			foreach ( $chunk as $candidate ) {
+				$candidate_id = (int) ( $candidate_ids[ (string) $candidate['external_id'] ] ?? 0 );
+				// candidate_id é inteiro por conversão; NULL literal quando o cadastro não existe.
+				$values[] = $wpdb->prepare( '(%d,' . ( $candidate_id ? (string) $candidate_id : 'NULL' ) . ',%s,%d,%d,%f,%d,%s,%s,%s,%s,%s)', $snapshot_id, $candidate['external_id'], $candidate['rank'], $candidate['votes'], $candidate['percentage'], $candidate['elected'], $candidate['situation'], $candidate['ballot_name'], $candidate['full_name'], $candidate['ballot_number'], $candidate['party'] ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			}
+			if ( false === $wpdb->query( "INSERT INTO {$table} (snapshot_id,candidate_id,external_candidate_id,rank_no,votes,percentage,elected,situation,ballot_name,full_name,ballot_number,party) VALUES " . implode( ',', $values ) ) ) { // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared
+				throw new RuntimeException( 'Falha ao gravar o ranking do snapshot.' );
+			}
+		}
 	}
 
 	private function photo_url( string $source_url, string $candidate_id ): string {

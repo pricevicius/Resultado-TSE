@@ -9,7 +9,7 @@ final class AE_Admin {
 	public function register(): void {
 		add_action( 'admin_menu', array( $this, 'menu' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'assets' ) );
-		foreach ( array( 'sync_tse', 'quick_setup', 'save_contest', 'start_import', 'retry_job', 'run_jobs', 'save_sync_selection', 'wipe_test_data', 'save_pages' ) as $action ) { add_action( 'admin_post_ae_' . $action, array( $this, $action ) ); }
+		foreach ( array( 'sync_tse', 'quick_setup', 'save_contest', 'start_import', 'retry_job', 'run_jobs', 'save_sync_selection', 'wipe_test_data', 'save_pages', 'save_auto_import' ) as $action ) { add_action( 'admin_post_ae_' . $action, array( $this, $action ) ); }
 		add_action( 'wp_ajax_ae_admin_status', array( $this, 'ajax_status' ) );
 	}
 
@@ -23,16 +23,18 @@ final class AE_Admin {
 
 	public function page(): void {
 		$this->guard(); $tab = sanitize_key( $_GET['tab'] ?? 'overview' ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		if ( ! in_array( $tab, array( 'overview', 'setup', 'selecao', 'import', 'jobs', 'logs' ), true ) ) { $tab = 'overview'; }
-		?><div class="wrap ae-admin"><div class="ae-title"><div><h1>Apuração Eleitoral</h1><p>Configure, importe e acompanhe a apuração sem sair do WordPress.</p></div><span class="ae-version">v<?php echo esc_html( AE_VERSION ); ?></span></div><?php $this->notice(); ?><nav class="nav-tab-wrapper"><?php foreach ( array( 'overview'=>'Visão geral', 'setup'=>'Configuração', 'selecao'=>'Seleção de disputas', 'import'=>'Importar e coletar', 'jobs'=>'Fila e progresso', 'logs'=>'Logs' ) as $key=>$label ) : ?><a class="nav-tab <?php echo $tab === $key ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( $this->url( $key ) ); ?>"><?php echo esc_html( $label ); ?></a><?php endforeach; ?></nav><?php call_user_func( array( $this, 'tab_' . $tab ) ); ?></div><?php
+		if ( ! in_array( $tab, array( 'overview', 'setup', 'selecao', 'import', 'jobs', 'logs', 'shortcodes' ), true ) ) { $tab = 'overview'; }
+		?><div class="wrap ae-admin"><div class="ae-title"><div><h1>Apuração Eleitoral</h1><p>Configure, importe e acompanhe a apuração sem sair do WordPress.</p></div><span class="ae-version">v<?php echo esc_html( AE_VERSION ); ?></span></div><?php $this->notice(); ?><nav class="nav-tab-wrapper"><?php foreach ( array( 'overview'=>'Visão geral', 'setup'=>'Configuração', 'selecao'=>'Seleção de disputas', 'import'=>'Importar e coletar', 'jobs'=>'Fila e progresso', 'logs'=>'Logs', 'shortcodes'=>'Como usar' ) as $key=>$label ) : ?><a class="nav-tab <?php echo $tab === $key ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( $this->url( $key ) ); ?>"><?php echo esc_html( $label ); ?></a><?php endforeach; ?></nav><?php call_user_func( array( $this, 'tab_' . $tab ) ); ?></div><?php
 	}
+
+	private function tab_shortcodes(): void { AE_Admin_Guide::render( $this->url( 'selecao' ), $this->url( 'setup' ), $this->url( 'import' ) ); }
 
 	private function tab_overview(): void {
 		global $wpdb; $p = $wpdb->prefix . 'ae_'; $counts = array(
 			'elections'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$p}elections"), 'contests'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$p}contests WHERE active=1"), 'enabled'=>$this->count_enabled_contests(), 'candidates'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$p}candidates"), 'snapshots'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$p}snapshots WHERE status='valid'") ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$next = wp_next_scheduled( 'ae_run_jobs' );
 		// "Sincronizadas" = existem no banco (o EA11 sempre traz as 27 UFs); "Habilitadas" = de fato coletando/importando — evita o rotulo antigo ("Disputas ativas") dar a entender que tudo esta sendo importado.
-		$this->tick_notice(); $this->setup_guide(); ?><div class="ae-grid ae-stats"><?php foreach ( array( 'elections'=>'Eleições', 'contests'=>'Disputas sincronizadas', 'enabled'=>'Habilitadas p/ coleta', 'candidates'=>'Candidatos', 'snapshots'=>'Snapshots válidos' ) as $key=>$label ) : ?><div class="ae-card"><strong><?php echo esc_html( number_format_i18n( $counts[$key] ) ); ?></strong><span><?php echo esc_html( $label ); ?></span></div><?php endforeach; ?></div>
+		$this->tick_notice(); $this->engine_notice(); $this->site_uf_notice(); $this->setup_guide(); ?><div class="ae-grid ae-stats"><?php foreach ( array( 'elections'=>'Eleições', 'contests'=>'Disputas sincronizadas', 'enabled'=>'Habilitadas p/ coleta', 'candidates'=>'Candidatos', 'snapshots'=>'Snapshots válidos' ) as $key=>$label ) : ?><div class="ae-card"><strong><?php echo esc_html( number_format_i18n( $counts[$key] ) ); ?></strong><span><?php echo esc_html( $label ); ?></span></div><?php endforeach; ?></div>
 		<?php if ( $counts['contests'] > 0 && $counts['enabled'] < $counts['contests'] ) : ?><p class="description">Sincronizar sempre traz o catálogo nacional do TSE (todas as UFs) — só as <strong><?php echo esc_html( number_format_i18n( $counts['enabled'] ) ); ?></strong> disputas "habilitadas p/ coleta" são de fato coletadas e entram na importação de candidatos. Ajuste em <a href="<?php echo esc_url( $this->url( 'selecao' ) ); ?>">Seleção de disputas</a>.</p><?php endif; ?>
 		<div class="ae-grid ae-two"><section class="ae-panel"><h2>Comece em três passos</h2><ol class="ae-steps"><li><span>1</span><div><strong>Sincronize com o TSE</strong><p>O plugin lê o EA11 e cria eleições, cargos, turnos e fontes oficiais.</p><a class="button" href="<?php echo esc_url($this->url('setup')); ?>">Sincronizar</a></div></li><li><span>2</span><div><strong>Importe candidatos</strong><p>O arquivo oficial de Dados Abertos é localizado automaticamente.</p><a class="button" href="<?php echo esc_url($this->url('import')); ?>">Importar</a></div></li><li><span>3</span><div><strong>Publique o componente</strong><p>Bloco e shortcode atualizam no cliente pela API do seu WordPress.</p><a class="button button-primary" href="<?php echo esc_url($this->url('import')); ?>#ae-collection">Ver coleta</a></div></li></ol></section>
 		<section class="ae-panel"><h2>Saúde</h2><dl class="ae-health"><dt>Banco</dt><dd><span class="ae-dot ae-ok"></span> schema <?php echo esc_html((string)get_option('ae_schema_version','não instalado')); ?></dd><dt>Processador</dt><dd><?php echo $next ? '<span class="ae-dot ae-ok"></span> próximo ciclo em '.esc_html(human_time_diff(time(),$next)) : '<span class="ae-dot ae-bad"></span> cron não agendado'; ?></dd><dt>Último tick</dt><dd><?php echo wp_kses_post( $this->tick_health_html() ); ?></dd><dt>Último snapshot</dt><dd><?php echo esc_html((string)($wpdb->get_var("SELECT MAX(captured_at) FROM {$p}snapshots WHERE status='valid'") ?: 'ainda não recebido')); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared ?></dd></dl><?php $this->run_button(); ?></section></div><?php
@@ -43,11 +45,11 @@ final class AE_Admin {
 		$site_uf = strtoupper( (string) get_option( 'ae_site_uf', '' ) );
 		?><div class="ae-grid ae-two"><section class="ae-panel"><h2>Conectar ao TSE</h2><p>Sem copiar URLs: o plugin consulta o catálogo EA11 e monta todas as fontes conforme os diretórios oficiais.</p>
 		<?php if ( '' === $site_uf ) : ?><div class="notice notice-warning inline" style="border-left:4px solid #d63638;padding:1px 12px;margin:0 0 16px;"><p><strong>Atenção:</strong> nenhuma UF configurada ainda. Sincronizando sem preencher o campo abaixo, <strong>toda disputa nova nasce ligada nas 27 UFs</strong> — a coleta automática e a importação de candidatos vão puxar o Brasil inteiro, não só o seu estado. Preencha a UF antes de sincronizar, a menos que este site cubra o país inteiro de propósito.</p></div><?php endif; ?>
-		<form action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post"><?php wp_nonce_field('ae_sync_tse'); ?><input type="hidden" name="action" value="ae_sync_tse"><label>Ambiente<select name="environment"><option value="oficial">Oficial</option><option value="simulado" selected>Simulado 2026</option></select></label><label>Ano<input name="year" type="number" min="2022" max="2100" value="2026" required></label><label>UF deste site<input name="uf" maxlength="2" style="text-transform:uppercase;width:4em" value="<?php echo esc_attr($site_uf); ?>" placeholder="ES"></label><button class="button button-primary button-hero">Sincronizar configuração do TSE</button><p class="description">Toda disputa nova nasce <strong>desligada</strong>, exceto as dessa UF e Presidente — evita puxar coleta e candidatos do Brasil inteiro sem querer. Disputas já existentes preservam o que você marcou em Seleção de disputas. Deixar em branco é permitido, mas volta ao comportamento antigo (tudo ligado).</p></form></section>
+		<form action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post"><?php wp_nonce_field('ae_sync_tse'); ?><input type="hidden" name="action" value="ae_sync_tse"><label>Ambiente<select name="environment"><option value="oficial">Oficial</option><option value="simulado" selected>Simulado</option></select></label><label>Ano<input name="year" type="number" min="2022" max="2100" value="<?php echo esc_attr( (string) AE_Plugin::default_election_year() ); ?>" required></label><label>UF deste site<input name="uf" maxlength="2" style="text-transform:uppercase;width:4em" value="<?php echo esc_attr($site_uf); ?>" placeholder="UF"></label><button class="button button-primary button-hero">Sincronizar configuração do TSE</button><p class="description">Toda disputa nova nasce <strong>desligada</strong>, exceto as dessa UF e Presidente — evita puxar coleta e candidatos do Brasil inteiro sem querer. Disputas já existentes preservam o que você marcou em Seleção de disputas. Deixar em branco é permitido, mas volta ao comportamento antigo (tudo ligado).</p></form></section>
 		<section class="ae-panel"><h2>Configuração existente</h2><?php if(!$elections): ?><p>Nenhuma eleição.</p><?php else: ?><table class="widefat striped"><thead><tr><th>Eleição</th><th>Status</th><th>Disputas</th></tr></thead><tbody><?php foreach($elections as $e): ?><tr><td><strong><?php echo esc_html($e->name); ?></strong><br><code><?php echo esc_html($e->slug); ?></code></td><td><?php echo esc_html($e->status); ?></td><td><?php echo esc_html((string)$e->contests); ?></td></tr><?php endforeach; ?></tbody></table><?php endif; ?></section></div>
 		<?php $this->navigation_panel(); ?>
 		<?php $this->test_data_panel(); ?>
-		<section class="ae-panel"><details><summary><strong>Estrutura local para desenvolvimento</strong></summary><p>Cria uma eleição local sem fontes externas. Use para testar tela zerada e cenários controlados antes dos simulados.</p><form class="ae-form-grid" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post"><?php wp_nonce_field('ae_quick_setup'); ?><input type="hidden" name="action" value="ae_quick_setup"><label>Ano<input name="year" type="number" min="2022" max="2100" value="2026" required></label><label>Nome<input name="name" value="Eleições Gerais 2026" required></label><div><button class="button">Criar estrutura de teste</button></div></form></details></section>
+		<section class="ae-panel"><details><summary><strong>Estrutura local para desenvolvimento</strong></summary><p>Cria uma eleição local sem fontes externas. Use para testar tela zerada e cenários controlados antes dos simulados.</p><form class="ae-form-grid" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post"><?php wp_nonce_field('ae_quick_setup'); ?><input type="hidden" name="action" value="ae_quick_setup"><label>Ano<input name="year" type="number" min="2022" max="2100" value="<?php echo esc_attr( (string) AE_Plugin::default_election_year() ); ?>" required></label><label>Nome<input name="name" value="<?php echo esc_attr( 'Eleições ' . AE_Plugin::default_election_year() ); ?>" required></label><div><button class="button">Criar estrutura de teste</button></div></form></details></section>
 		<section class="ae-panel"><h2>Adicionar disputa personalizada</h2><form class="ae-form-grid" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post"><?php wp_nonce_field('ae_save_contest'); ?><input type="hidden" name="action" value="ae_save_contest"><?php $this->election_select('election_id',$elections); ?><label>Turno<input name="round_no" type="number" min="1" max="3" value="1" required></label><label>Código do cargo<input name="position_code" value="0001" required></label><label>Nome do cargo<input name="position_name" placeholder="Presidente" required></label><label>Tipo<select name="scope_type"><option value="BR">Brasil</option><option value="UF">Estado</option><option value="MU">Município</option></select></label><label>Código<input name="scope_code" placeholder="BR ou ES" required></label><label>Abrangência<input name="scope_name" placeholder="Brasil ou Espírito Santo" required></label><label>Vagas<input name="seats" type="number" min="1" value="1" required></label><div><button class="button button-primary">Adicionar disputa</button></div></form></section><?php $this->setup_guide(); ?><?php
 	}
 
@@ -55,7 +57,7 @@ final class AE_Admin {
 		<section class="ae-panel"><h2>Comece por aqui: ativação e publicação</h2>
 		<ol class="ae-steps">
 			<li><span>1</span><div><strong>Ative o plugin</strong><p>As tabelas, o agendamento de coleta e a estrutura inicial são criados automaticamente. Se uma restauração remover tabelas, o plugin as verifica e recria no próximo carregamento do WordPress.</p></div></li>
-			<li><span>2</span><div><strong>Sincronize o ambiente</strong><p>Para homologar, escolha <em>Simulado 2026</em> e sincronize. Em produção, escolha <em>Oficial</em> somente quando o TSE publicar o catálogo daquele ambiente.</p></div></li>
+			<li><span>2</span><div><strong>Sincronize o ambiente</strong><p>Para homologar, escolha <em>Simulado</em> e sincronize. Em produção, escolha <em>Oficial</em> somente quando o TSE publicar o catálogo daquele ambiente.</p></div></li>
 			<li><span>3</span><div><strong>Importe os candidatos</strong><p>Em <a href="<?php echo esc_url( $this->url( 'import' ) ); ?>">Importar e coletar</a>, escolha a eleição e inicie a importação. A fila processa o pacote oficial em lotes; acompanhe o resultado na aba Fila e progresso.</p></div></li>
 			<li><span>4</span><div><strong>Valide a apuração</strong><p>O simulado só responde nos horários divulgados pelo TSE. Verifique se surgiram snapshots válidos e se Presidente, Governador e Senado exibem dados na página de apuração.</p></div></li>
 			<li><span>5</span><div><strong>Publique</strong><p>Use <code>[tse_apuracao cargo="governador" uf="es"]</code> para um placar ou <code>[apuracao_candidatos]</code> para o catálogo. Adicione <code>[apuracao_navegacao]</code> nas duas páginas para exibir o menu entre elas — configure as páginas na seção "Navegação" logo abaixo. Visitantes consultam apenas este WordPress; a coleta do TSE ocorre no servidor com limite interno e cache condicional.</p></div></li>
@@ -150,7 +152,8 @@ final class AE_Admin {
 		<div class="notice notice-warning inline" style="border-left:4px solid #d63638;padding:1px 12px;margin:0 0 16px;"><p><strong>Atenção:</strong> disputas <u>desmarcadas</u> abaixo <strong>não são sincronizadas com o TSE</strong> — ficam paradas no último dado coletado (ou nunca chegam a ter um), mesmo que apareçam publicadas em algum shortcode ou bloco do site. Marque só o que está de fato publicado.</p></div>
 		<h2>Seleção de disputas para sincronização automática</h2>
 		<p class="description">Agrupado por cargo, tudo fechado por padrão. Sincronizar com o TSE (aba Configuração) recria esta lista, mas preserva o que você marcar/desmarcar aqui — só volta a marcar tudo se a disputa for nova.</p>
-		<?php $uf_count = AE_Collection_Policy::count_enabled_ufs( $contests ); $multi_uf = $uf_count > 1; $heavy_seconds = AE_Collection_Policy::heavy_interval(); ?>
+		<?php $this->site_uf_notice( $contests ); ?>
+			<?php $uf_count = AE_Collection_Policy::count_enabled_ufs( $contests ); $multi_uf = $uf_count > 1; $heavy_seconds = AE_Collection_Policy::heavy_interval(); ?>
 		<div class="notice notice-info inline" style="padding:8px 12px;margin:0 0 16px;">
 			<p><strong>Quanto cada disputa atualiza.</strong> Presidente, Governador e Senador (os cargos majoritários) atualizam a cada <strong><?php echo esc_html( (string) AE_Collection_Policy::DEFAULT_INTERVAL ); ?> s</strong> e vão na frente da fila. Quando <strong>mais de uma UF</strong> está ligada, Deputado Federal e Estadual/Distrital passam a atualizar a cada <strong><?php echo esc_html( (string) $heavy_seconds ); ?> s</strong>: cada coleta deles tem centenas de candidatos por UF e, no mesmo ritmo, atrasaria todas as outras. Com uma UF só, tudo fica em <?php echo esc_html( (string) AE_Collection_Policy::DEFAULT_INTERVAL ); ?> s.</p>
 			<p><?php if ( $multi_uf ) : ?><strong>Agora há <?php echo esc_html( (string) $uf_count ); ?> UFs ligadas: a regra está ativa</strong> e os deputados atualizam mais devagar.<?php else : ?>Agora há <?php echo esc_html( (string) $uf_count ); ?> UF ligada: a regra está inativa e tudo atualiza em <?php echo esc_html( (string) AE_Collection_Policy::DEFAULT_INTERVAL ); ?> s.<?php endif; ?> Você pode ajustar disputa por disputa na coluna <em>Atualiza a cada</em> (30 a 900 s); apague o valor para voltar ao automático. Uma coleta pesada já em andamento ocupa a fila até terminar, e esta regra não encurta isso.</p>
@@ -204,6 +207,7 @@ final class AE_Admin {
 		<?php if ( ! $scope['ufs'] ) : ?><p class="description">⚠️ Nenhuma disputa habilitada ainda — marque ao menos uma em <a href="<?php echo esc_url($this->url('selecao')); ?>">Seleção de disputas</a> antes de importar, senão a importação traz o Brasil inteiro.</p><?php else : ?><p class="description">Vai importar: <strong><?php echo esc_html( implode( ', ', $scope['ufs'] ) ); ?></strong> · cargos: <strong><?php echo esc_html( implode( ', ', $scope['cargo_labels'] ) ); ?></strong></p><?php endif; ?>
 		<form action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post"><?php wp_nonce_field('ae_start_import'); ?><input type="hidden" name="action" value="ae_start_import"><?php $this->election_select('election_id',$elections); ?><button class="button button-primary button-hero">Buscar e importar candidatos</button><p class="description">Fonte gerenciada pelo plugin; nenhuma URL precisa ser informada.</p></form></section>
 		<section id="ae-collection" class="ae-panel"><h2>2. Coleta automática protegida</h2><p>As fontes EA20 são criadas pela sincronização do EA11. O servidor consulta o TSE com teto de 20 requisições/s, cache condicional e pausa preventiva de 10 minutos somente em bloqueios (403/429). Arquivos inexistentes (404) são isolados daquela disputa.</p><p><strong>Os visitantes nunca acessam o TSE.</strong> O bloco consulta somente a API REST deste WordPress, no navegador, sem prender o cache das páginas.</p><a class="button" href="<?php echo esc_url($this->url('setup')); ?>">Sincronizar ou trocar ambiente</a></section></div>
+		<?php $this->last_import_panel( $elections ); ?>
 		<section class="ae-panel"><h2>Fontes configuradas</h2><table class="widefat striped"><thead><tr><th>Disputa</th><th>Formato</th><th>Intervalo</th><th>Situação</th></tr></thead><tbody><?php $configured=0; foreach($contests as $c): $config=json_decode((string)$c->config_json,true); $collection=$config['collection']??array(); if(empty($collection['source_url']))continue; $configured++; ?><tr><td><?php echo esc_html($c->position_name.' · '.$c->scope_code.' · '.$c->round_no.'º turno'); ?></td><td><?php echo esc_html($collection['kind']??''); ?></td><td><?php echo esc_html((string)($collection['interval']??60)); ?>s</td><td><span class="ae-status <?php echo !empty($collection['enabled'])?'is-completed':'is-paused'; ?>"><?php echo !empty($collection['enabled'])?'Ativa':'Pausada'; ?></span></td></tr><?php endforeach; if(!$configured): ?><tr><td colspan="4">Nenhuma fonte configurada. Sincronize com o TSE na aba Configuração.</td></tr><?php endif; ?></tbody></table></section><?php
 	}
 
@@ -279,7 +283,7 @@ final class AE_Admin {
 	public function sync_tse(): void {
 		$this->verify( 'ae_sync_tse' );
 		$environment = 'simulado' === sanitize_key( $_POST['environment'] ?? '' ) ? 'simulado' : 'oficial';
-		$year = max( 2022, absint( $_POST['year'] ?? 2026 ) );
+		$year = max( 2022, absint( $_POST['year'] ?? AE_Plugin::default_election_year() ) );
 		$uf = strtoupper( substr( preg_replace( '/[^A-Za-z]/', '', (string) ( $_POST['uf'] ?? '' ) ), 0, 2 ) );
 		if ( '' !== $uf ) { update_option( 'ae_site_uf', $uf, false ); }
 		$payload = array( 'environment' => $environment, 'year' => $year );
@@ -289,7 +293,7 @@ final class AE_Admin {
 	}
 
 	public function quick_setup(): void {
-		$this->verify('ae_quick_setup'); global $wpdb; $p=$wpdb->prefix.'ae_'; $year=max(2022,absint($_POST['year']??2026)); $slug='eleicoes-'.$year; $name=sanitize_text_field(wp_unslash($_POST['name']??'Eleições Gerais '.$year)); $now=current_time('mysql',true);
+		$this->verify('ae_quick_setup'); global $wpdb; $p=$wpdb->prefix.'ae_'; $year=max(2022,absint($_POST['year']??AE_Plugin::default_election_year())); $slug='eleicoes-'.$year; $name=sanitize_text_field(wp_unslash($_POST['name']??'Eleições '.$year)); $now=current_time('mysql',true);
 		$id=(int)$wpdb->get_var($wpdb->prepare("SELECT id FROM {$p}elections WHERE slug=%s",$slug)); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		if(!$id){$wpdb->insert($p.'elections',array('slug'=>$slug,'name'=>$name,'year'=>$year,'timezone'=>'America/Sao_Paulo','status'=>'active','config_json'=>'{}','created_at'=>$now,'updated_at'=>$now));$id=(int)$wpdb->insert_id;}else{$wpdb->update($p.'elections',array('name'=>$name,'status'=>'active','updated_at'=>$now),array('id'=>$id));}
 		$items=array(array(1,'0001','Presidente','BR','BR','Brasil',1),array(2,'0001','Presidente','BR','BR','Brasil',1)); foreach($this->ufs() as $code=>$label){$items[]=array(1,'0003','Governador','UF',$code,$label,1);$items[]=array(2,'0003','Governador','UF',$code,$label,1);$items[]=array(1,'0005','Senador','UF',$code,$label,1);}
@@ -299,17 +303,12 @@ final class AE_Admin {
 
 	public function save_contest(): void { $this->verify('ae_save_contest'); global $wpdb; $table=$wpdb->prefix.'ae_contests'; $data=array('election_id'=>absint($_POST['election_id']??0),'round_no'=>max(1,absint($_POST['round_no']??1)),'position_code'=>sanitize_key(wp_unslash($_POST['position_code']??'')),'position_name'=>sanitize_text_field(wp_unslash($_POST['position_name']??'')),'scope_type'=>strtoupper(sanitize_key(wp_unslash($_POST['scope_type']??''))),'scope_code'=>strtoupper(sanitize_key(wp_unslash($_POST['scope_code']??''))),'scope_name'=>sanitize_text_field(wp_unslash($_POST['scope_name']??'')),'seats'=>max(1,absint($_POST['seats']??1)),'active'=>1,'config_json'=>'{}'); $data['external_id']='manual-'.$data['round_no'].'-'.$data['position_code'].'-'.$data['scope_code']; $wpdb->replace($table,$data); AE_Logger::write('info','contest_saved',array('contest_id'=>(int)$wpdb->insert_id));$this->redirect('setup','Disputa adicionada.'); }
 	public function start_import(): void {
-		$this->verify('ae_start_import'); global $wpdb;
+		$this->verify('ae_start_import');
 		$election_id = absint( $_POST['election_id'] ?? 0 );
-		$year = absint( $wpdb->get_var( $wpdb->prepare( "SELECT year FROM {$wpdb->prefix}ae_elections WHERE id=%d", $election_id ) ) );
-		if ( ! $election_id || ! $year ) { $this->redirect( 'import', 'Selecione uma eleição válida.', 'error' ); }
-		$p = $wpdb->prefix . 'ae_';
-		$contests = $wpdb->get_results( $wpdb->prepare( "SELECT position_code,scope_code,config_json FROM {$p}contests WHERE election_id=%d AND active=1", $election_id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$scope = $this->import_scope_from_selection( $contests );
-		$payload = array( 'election_id' => $election_id, 'source_url' => AE_TSE_Discovery::candidates_url( $year ), 'format' => 'zip' );
-		if ( $scope['ufs'] ) { $payload['ufs'] = $scope['ufs']; $payload['cargos'] = $scope['cargos']; }
+		$payload = AE_Collection_Policy::import_payload( $election_id );
+		if ( ! $payload ) { $this->redirect( 'import', 'Selecione uma eleição válida.', 'error' ); }
 		$id = AE_Job_Runner::enqueue( 'import_candidates', $payload );
-		$detalhe = $scope['ufs'] ? ' (' . implode( ', ', $scope['ufs'] ) . ')' : ' (Brasil inteiro — nenhuma disputa habilitada em Seleção de disputas)';
+		$detalhe = ! empty( $payload['ufs'] ) ? ' (' . implode( ', ', $payload['ufs'] ) . ')' : ' (Brasil inteiro — nenhuma disputa habilitada em Seleção de disputas)';
 		$this->redirect( 'jobs', 'Importação oficial de candidatos adicionada à fila' . $detalhe . '. Job #' . $id . '.' );
 	}
 
@@ -344,6 +343,30 @@ final class AE_Admin {
 		}
 	}
 
+	/** Aviso quando as tabelas não são InnoDB: a transação do snapshot não protege nada nesse caso. */
+	private function engine_notice(): void {
+		$bad = AE_Schema::non_innodb_tables();
+		if ( ! $bad ) { return; }
+		echo '<div class="notice notice-error inline" style="border-left:4px solid #d63638;padding:1px 12px;margin:12px 0;"><p><strong>Tabelas fora do InnoDB:</strong> ' . esc_html( implode( ', ', $bad ) ) . '. O snapshot e o ranking são gravados numa transação; em outro mecanismo (como MyISAM) uma interrupção pode deixar um snapshot parcial sendo servido. Converta com <code>ALTER TABLE nome ENGINE=InnoDB</code>.</p></div>';
+	}
+
+	/**
+	 * Aviso quando há disputas da UF do site desligadas. Sem UF configurada não há o que comparar.
+	 *
+	 * @param array<int,object>|null $contests Disputas já carregadas pela tela; carrega aqui se omitido.
+	 */
+	private function site_uf_notice( ?array $contests = null ): void {
+		global $wpdb;
+		$site_uf = strtoupper( (string) get_option( 'ae_site_uf', '' ) );
+		if ( '' === $site_uf ) { return; }
+		if ( null === $contests ) { $contests = (array) $wpdb->get_results( "SELECT position_name,scope_code,round_no,config_json FROM {$wpdb->prefix}ae_contests WHERE active=1 AND config_json IS NOT NULL" ); } // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$off = AE_Collection_Policy::disabled_in_site_uf( $contests, $site_uf );
+		if ( ! $off ) { return; }
+		$names = array();
+		foreach ( $off as $c ) { $names[ $c->position_name . ( (int) $c->round_no > 1 ? ' (' . (int) $c->round_no . 'º turno)' : '' ) ] = true; }
+		echo '<div class="notice notice-warning inline" style="border-left:4px solid #dba617;padding:1px 12px;margin:12px 0;"><p><strong>Disputas de ' . esc_html( $site_uf ) . ' desligadas:</strong> ' . esc_html( implode( ', ', array_keys( $names ) ) ) . '. Elas não estão sendo coletadas nem importadas, e o que estiver publicado no site fica parado. Se isso não foi de propósito, ligue em <a href="' . esc_url( $this->url( 'selecao' ) ) . '">Seleção de disputas</a>.</p></div>';
+	}
+
 	private function count_enabled_contests(): int {
 		global $wpdb; $p = $wpdb->prefix . 'ae_';
 		$rows = $wpdb->get_col( "SELECT config_json FROM {$p}contests WHERE active=1" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
@@ -355,21 +378,35 @@ final class AE_Admin {
 		return $enabled;
 	}
 
-	/** Deriva UFs e cargos (CD_CARGO, sem zero-padding) a partir das disputas com collection.enabled=true — a mesma seleção usada pra coleta de resultado. */
-	private function import_scope_from_selection( array $contests ): array {
-		$ufs = array(); $cargos = array(); $labels = array();
-		$cargo_names = array( '1' => 'Presidente', '3' => 'Governador', '5' => 'Senador', '6' => 'Dep. Federal', '7' => 'Dep. Estadual', '8' => 'Dep. Distrital' );
-		foreach ( $contests as $c ) {
-			$config = json_decode( (string) $c->config_json, true );
-			$enabled = ! isset( $config['collection']['enabled'] ) || $config['collection']['enabled'];
-			if ( ! $enabled ) { continue; }
-			if ( 'BR' !== $c->scope_code ) { $ufs[ $c->scope_code ] = true; }
-			$cargo = (string) absint( $c->position_code );
-			$cargos[ $cargo ] = true;
-			$labels[ $cargo_names[ $cargo ] ?? $cargo ] = true;
-		}
-		return array( 'ufs' => array_keys( $ufs ), 'cargos' => array_keys( $cargos ), 'cargo_labels' => array_keys( $labels ) );
+	/** Quando foi a última importação, de que CSV, quantos candidatos saíram da lista, e o agendamento automático. */
+	private function last_import_panel( array $elections ): void {
+		global $wpdb;
+		$last = get_option( 'ae_last_import', array() ); $last = is_array( $last ) ? $last : array();
+		$auto = absint( get_option( 'ae_auto_import_election', 0 ) );
+		$removed = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}ae_candidates WHERE removed_at IS NOT NULL" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$utc = static fn( string $mysql ): string => '' === $mysql ? '—' : (string) get_date_from_gmt( $mysql, 'd/m/Y H:i' );
+		?><section class="ae-panel"><h2>Última importação de candidatos</h2>
+		<?php if ( ! $last ) : ?><p>Nenhuma importação concluída ainda.</p><?php else : ?>
+		<dl class="ae-health"><dt>Concluída em</dt><dd><?php echo esc_html( $utc( (string) ( $last['finished_at'] ?? '' ) ) ); ?></dd><dt>CSV gerado pelo TSE em</dt><dd><?php echo esc_html( ! empty( $last['csv_generated_at'] ) ? date_i18n( 'd/m/Y H:i', strtotime( (string) $last['csv_generated_at'] . ' UTC' ) ) . ' (Brasília)' : 'não informado' ); ?></dd><dt>Linhas importadas</dt><dd><?php echo esc_html( number_format_i18n( (int) ( $last['rows'] ?? 0 ) ) ); ?></dd><dt>Escopo</dt><dd><?php echo esc_html( ! empty( $last['ufs'] ) ? implode( ', ', (array) $last['ufs'] ) : 'Brasil inteiro' ); ?></dd></dl>
+		<?php endif; ?>
+		<p><strong><?php echo esc_html( number_format_i18n( $removed ) ); ?></strong> candidato(s) não constam mais na lista do TSE (renúncia ou substituição). Continuam no cadastro e o catálogo mostra o aviso; voltam ao normal se reaparecerem numa importação.</p>
+		<form class="ae-inline" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="post"><?php wp_nonce_field( 'ae_save_auto_import' ); ?><input type="hidden" name="action" value="ae_save_auto_import">
+		<label>Reimportar automaticamente (a cada 6 h)<select name="election_id"><option value="0">Desligado</option><?php foreach ( $elections as $e ) : ?><option value="<?php echo esc_attr( (string) $e->id ); ?>" <?php selected( $auto, (int) $e->id ); ?>><?php echo esc_html( $e->name ); ?></option><?php endforeach; ?></select></label> <button class="button">Salvar</button>
+		<p class="description">O TSE regenera o CSV todos os dias. Só importa as UFs e cargos ligados em Seleção de disputas, e nunca o Brasil inteiro. O download prende a fila por alguns minutos: desligue na noite da eleição.</p></form></section><?php
 	}
+
+	public function save_auto_import(): void {
+		$this->verify( 'ae_save_auto_import' );
+		global $wpdb;
+		$election_id = absint( $_POST['election_id'] ?? 0 );
+		if ( $election_id && ! $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$wpdb->prefix}ae_elections WHERE id=%d", $election_id ) ) ) { $this->redirect( 'import', 'Eleição inválida.', 'error' ); } // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		update_option( 'ae_auto_import_election', $election_id, false );
+		AE_Logger::write( 'info', 'auto_import_saved', array( 'election_id' => $election_id ) );
+		$this->redirect( 'import', $election_id ? 'Reimportação automática ligada (a cada 6 h).' : 'Reimportação automática desligada.' );
+	}
+
+	/** UFs e cargos das disputas ligadas na Seleção de disputas (a mesma seleção usada pela coleta de resultado). */
+	private function import_scope_from_selection( array $contests ): array { return AE_Collection_Policy::import_scope( $contests ); }
 	public function retry_job(): void { $this->verify('ae_retry_job');global $wpdb;$id=absint($_POST['job_id']??0);$wpdb->update($wpdb->prefix.'ae_jobs',array('state'=>'retry','attempts'=>0,'run_after'=>current_time('mysql',true),'locked_until'=>null,'lock_token'=>null,'last_error'=>null),array('id'=>$id));$this->redirect('jobs','Job #'.$id.' recolocado na fila.'); }
 	public function run_jobs(): void { $this->verify('ae_run_jobs');AE_Job_Runner::instance()->tick();$this->redirect('jobs','Fila processada manualmente.'); }
 	public function ajax_status(): void { $this->guard();check_ajax_referer('ae_admin_status','nonce');global $wpdb;$table=$wpdb->prefix.'ae_jobs';$states=$wpdb->get_results("SELECT state,COUNT(*) total FROM {$table} GROUP BY state",OBJECT_K); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared

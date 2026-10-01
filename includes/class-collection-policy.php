@@ -59,6 +59,67 @@ final class AE_Collection_Policy {
 		return count( $ufs );
 	}
 
+	/**
+	 * Disputas da UF do site que estão desligadas. Foi assim que o Deputado Federal ficou parado sem
+	 * nenhum erro visível: desligada na Seleção de disputas, a coleta simplesmente não acontece.
+	 * Cargos nacionais (BR) não entram: só a UF do site importa aqui.
+	 *
+	 * @param array<int,object> $contests Linhas com position_name, scope_code, round_no e config_json.
+	 * @return array<int,object> As disputas da UF que não estão ligadas.
+	 */
+	public static function disabled_in_site_uf( array $contests, string $site_uf ): array {
+		$site_uf = strtoupper( trim( $site_uf ) );
+		if ( '' === $site_uf ) { return array(); }
+		$off = array();
+		foreach ( $contests as $contest ) {
+			if ( strtoupper( (string) $contest->scope_code ) !== $site_uf ) { continue; }
+			$config = json_decode( (string) $contest->config_json, true );
+			if ( isset( $config['collection']['enabled'] ) && ! $config['collection']['enabled'] ) { $off[] = $contest; }
+		}
+		return $off;
+	}
+
+	/** Cargos (CD_CARGO sem zero à esquerda) → rótulo curto, para a tela de importação. */
+	public const CARGO_LABELS = array( '1' => 'Presidente', '3' => 'Governador', '5' => 'Senador', '6' => 'Dep. Federal', '7' => 'Dep. Estadual', '8' => 'Dep. Distrital' );
+
+	/**
+	 * UFs e cargos a importar, derivados das disputas ligadas na Seleção de disputas (a mesma
+	 * seleção da coleta). Disputa sem a chave enabled conta como ligada.
+	 *
+	 * @param array<int,object> $contests Linhas com position_code, scope_code e config_json.
+	 * @return array{ufs:string[],cargos:string[],cargo_labels:string[]}
+	 */
+	public static function import_scope( array $contests ): array {
+		$ufs = array(); $cargos = array(); $labels = array();
+		foreach ( $contests as $c ) {
+			$config = json_decode( (string) $c->config_json, true );
+			$enabled = ! isset( $config['collection']['enabled'] ) || $config['collection']['enabled'];
+			if ( ! $enabled ) { continue; }
+			if ( 'BR' !== $c->scope_code ) { $ufs[ $c->scope_code ] = true; }
+			$cargo = (string) absint( $c->position_code );
+			$cargos[ $cargo ] = true;
+			$labels[ self::CARGO_LABELS[ $cargo ] ?? $cargo ] = true;
+		}
+		return array( 'ufs' => array_keys( $ufs ), 'cargos' => array_keys( $cargos ), 'cargo_labels' => array_keys( $labels ) );
+	}
+
+	/**
+	 * Payload do job import_candidates de uma eleição, com o escopo da seleção atual.
+	 * Devolve null se a eleição não existe. Sem nenhuma disputa ligada, o payload não traz
+	 * ufs/cargos e a importação cobriria o Brasil inteiro (quem agenda deve recusar isso).
+	 */
+	public static function import_payload( int $election_id ): ?array {
+		global $wpdb;
+		$p = $wpdb->prefix . 'ae_';
+		$year = absint( $wpdb->get_var( $wpdb->prepare( "SELECT year FROM {$p}elections WHERE id=%d", $election_id ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		if ( ! $election_id || ! $year ) { return null; }
+		$contests = $wpdb->get_results( $wpdb->prepare( "SELECT position_code,scope_code,config_json FROM {$p}contests WHERE election_id=%d AND active=1", $election_id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$scope = self::import_scope( (array) $contests );
+		$payload = array( 'election_id' => $election_id, 'source_url' => AE_TSE_Discovery::candidates_url( $year ), 'format' => 'zip' );
+		if ( $scope['ufs'] ) { $payload['ufs'] = $scope['ufs']; $payload['cargos'] = $scope['cargos']; }
+		return $payload;
+	}
+
 	/** A regra só vale com mais de uma UF ligada. */
 	public static function is_multi_uf(): bool {
 		global $wpdb;

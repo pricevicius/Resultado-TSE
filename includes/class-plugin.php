@@ -11,7 +11,9 @@ require_once AE_DIR . 'includes/class-results.php';
 require_once AE_DIR . 'includes/class-candidate-catalog.php';
 require_once AE_DIR . 'includes/class-navigation.php';
 require_once AE_DIR . 'includes/class-rest.php';
+require_once AE_DIR . 'includes/class-resumo.php';
 require_once AE_DIR . 'includes/class-shortcodes.php';
+require_once AE_DIR . 'includes/class-admin-guide.php';
 require_once AE_DIR . 'includes/class-admin.php';
 
 final class AE_Plugin {
@@ -24,7 +26,6 @@ final class AE_Plugin {
 	public static function activate(): void {
 		add_filter( 'cron_schedules', array( self::instance(), 'minute_schedule' ) );
 		AE_Schema::install();
-		if ( AE_Schema::VERSION === get_option( 'ae_schema_version' ) ) { self::seed_2026(); }
 		if ( ! wp_next_scheduled( 'ae_run_jobs' ) ) {
 			wp_schedule_event( time() + 60, 'ae_minute', 'ae_run_jobs' );
 		}
@@ -40,7 +41,6 @@ final class AE_Plugin {
 		// The option alone is not reliable after a partial restore or failed activation.
 		if ( ! AE_Schema::is_ready() ) {
 			AE_Schema::install();
-			if ( AE_Schema::is_ready() ) { self::seed_2026(); }
 		}
 		if ( ! wp_next_scheduled( 'ae_run_jobs' ) ) {
 			wp_schedule_event( time() + 60, 'ae_minute', 'ae_run_jobs' );
@@ -72,25 +72,12 @@ final class AE_Plugin {
 		register_block_type( AE_DIR . 'blocks/apuracao' );
 	}
 
-	private static function seed_2026(): void {
-		global $wpdb;
-		$table = $wpdb->prefix . 'ae_elections';
-		$exists = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$table} WHERE slug = %s", 'eleicoes-2026' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		if ( $exists ) {
-			return;
-		}
-		$now = current_time( 'mysql', true );
-		$wpdb->insert( $table, array(
-			'slug' => 'eleicoes-2026', 'name' => 'Eleicoes Gerais 2026', 'year' => 2026,
-			'timezone' => 'America/Sao_Paulo', 'status' => 'draft',
-			'config_json' => wp_json_encode( array(
-				'simulations' => array( '2026-09-15/2026-09-17', '2026-09-22/2026-09-24' ),
-				'positions' => array(
-					array( 'code' => '0001', 'name' => 'Presidente', 'scope_type' => 'BR', 'seats' => 1 ),
-					array( 'code' => '0003', 'name' => 'Governador', 'scope_type' => 'UF', 'seats' => 1 ),
-					array( 'code' => '0005', 'name' => 'Senador', 'scope_type' => 'UF', 'seats' => 1 ),
-				),
-			) ), 'created_at' => $now, 'updated_at' => $now,
-		), array( '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s' ) );
+	/**
+	 * Ano de eleição sugerido nos formulários: o ano corrente se for par, senão o seguinte
+	 * (eleições gerais e municipais caem em anos pares). Filtrável por ae_default_election_year.
+	 */
+	public static function default_election_year(): int {
+		$year = (int) gmdate( 'Y' );
+		return (int) apply_filters( 'ae_default_election_year', 0 === $year % 2 ? $year : $year + 1 );
 	}
 }
