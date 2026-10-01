@@ -32,7 +32,7 @@ $csv_latin1 = static function ( array $rows ) use ( $header ): string {
 	foreach ( $rows as $r ) { $out .= '"' . implode( '";"', $r ) . "\"\r\n"; }
 	return mb_convert_encoding( $out, 'ISO-8859-1', 'UTF-8' );
 };
-$row = static fn( string $uf, string $cargo, string $sq, string $name, string $urn = '' ) => array( '28/09/2026', '09:41:32', '1', $uf, $cargo, $sq, '1' . substr( $sq, -3 ), $name, '' === $urn ? $name : $urn, 'ABC', 'Deferido' );
+$row = static function ( string $uf, string $cargo, string $sq, string $name, string $urn = '' ) { return array( '28/09/2026', '09:41:32', '1', $uf, $cargo, $sq, '1' . substr( $sq, -3 ), $name, '' === $urn ? $name : $urn, 'ABC', 'Deferido' ); };
 $zw = array(); for ( $i = 1; $i <= 300; $i++ ) { $zw[] = $row( 'ZW', '6', (string) ( 100000 + $i ), 'CANDIDATO ' . $i . ' DA SILVA' ); }
 $zw[] = $row( 'ZW', '6', '100301', 'JOSÉ AÇAÍ NÓBREGA', 'ZÉ DO AÇAÍ' );
 $zw[] = $row( 'ZW', '9', '100302', 'SUPLENTE' ); // suplente
@@ -77,7 +77,7 @@ $import = static function ( int $job_id ) use ( $eid, $import_url ): array {
 	}
 	throw new RuntimeException( 'Importação não terminou.' );
 };
-$count = static fn( string $where = '1=1' ): int => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}candidates WHERE election_id={$eid} AND {$where}" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+$count = static function ( string $where = '1=1' ) use ( $wpdb, $p, $eid ): int { return (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}candidates WHERE election_id={$eid} AND {$where}" ); }; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 try {
 	// 1) Importação completa pelo ZIP.
