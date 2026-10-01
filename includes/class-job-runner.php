@@ -8,6 +8,8 @@ final class AE_Job_Runner {
 	/** Bounded opportunistic drain triggered by real page/REST traffic, so results keep moving even when WP-Cron's own loopback never fires (common on hosts that block self-requests) without needing any server-side cron setup. */
 	private const KICK_BUDGET_SECONDS = 3;
 	private const KICK_MIN_INTERVAL = 5;
+	/** Com a fila vazia, o kick() só olha as disputas devidas a cada tanto: é uma consulta a ae_contests por visita. */
+	private const KICK_ENQUEUE_INTERVAL = 15;
 	/** Completed/failed jobs older than this are removed so the queue table doesn't need manual cleanup. */
 	private const JOB_RETENTION_DAYS = 30;
 	private const PURGE_MIN_INTERVAL = DAY_IN_SECONDS;
@@ -75,7 +77,8 @@ final class AE_Job_Runner {
 		return $count;
 	}
 
-	public function tick(): void {
+	/** @param int $budget Segundos de fila drenados neste disparo (o do WP-Cron/CLI usa o padrão; a ação do admin, um valor menor). */
+	public function tick( int $budget = 40 ): void {
 		// Batimento registrado antes do lock: outro worker segurando o lock também prova que o disparo está vivo.
 		$is_cli = 'cli' === PHP_SAPI;
 		update_option( 'ae_last_tick_at', time(), false );
@@ -90,7 +93,7 @@ final class AE_Job_Runner {
 			$this->maybe_enqueue_scheduled_import();
 			$this->maybe_purge_old_jobs();
 			$started = microtime( true );
-			$jobs = $this->drain( 40 );
+			$jobs = $this->drain( max( 1, $budget ) );
 			// Só registra ticks que trabalharam: um tick vazio (fila em dia) não diz nada sobre o tempo que o lock fica preso.
 			if ( $jobs > 0 ) { AE_Perf::record( 'tick', microtime( true ) - $started, 0, $jobs ); }
 		} finally { $this->release_lock(); }
@@ -107,18 +110,51 @@ final class AE_Job_Runner {
 		if ( $last > time() - self::KICK_MIN_INTERVAL ) { return; }
 		global $wpdb;
 		$table = $wpdb->prefix . 'ae_jobs';
-		$now = current_time( 'mysql', true );
-		$pending = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$table} WHERE state IN ('queued','retry') AND run_after <= %s LIMIT 1", $now ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		if ( ! $pending ) { return; }
+		$pending_sql = "SELECT id FROM {$table} WHERE state IN ('queued','retry') AND run_after <= %s LIMIT 1";
+		$pending = $wpdb->get_var( $wpdb->prepare( $pending_sql, current_time( 'mysql', true ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// Fila vazia não é "nada a fazer": quem cria os jobs de coleta é enqueue_due_collections(), que só o tick() chamava. Sem
+		// WP-Cron (loopback bloqueado) a coleta nunca nascia, e o kick() saía aqui. Agora ele também enfileira o que está devido.
+		$check_due = ! $pending && (int) get_option( 'ae_last_kick_enqueue_at', 0 ) <= time() - self::KICK_ENQUEUE_INTERVAL;
+		if ( ! $pending && ! $check_due ) { return; }
 		update_option( 'ae_last_kick_at', time(), false );
+		if ( $check_due ) { update_option( 'ae_last_kick_enqueue_at', time(), false ); }
 		// Callers only invoke kick() from 'shutdown', once the visitor's response is already
 		// queued/sent; finish that connection now so this drain never adds request latency.
 		if ( function_exists( 'fastcgi_finish_request' ) ) { fastcgi_finish_request(); }
 		if ( ! $this->acquire_lock() ) { return; }
 		try {
 			if ( absint( get_option( 'ae_tse_blocked_until', 0 ) ) > time() ) { return; }
+			if ( $check_due ) { $this->enqueue_due_collections(); }
 			$this->drain( self::KICK_BUDGET_SECONDS );
 		} finally { $this->release_lock(); }
+	}
+
+	/**
+	 * Roda o worker na hora, a pedido de uma ação do admin (salvar seleção, sincronizar), para a coleta
+	 * começar sem esperar o WP-Cron. Nunca derruba a ação que o chamou.
+	 */
+	public function run_now( int $seconds = 20 ): void {
+		try { $this->tick( $seconds ); } catch ( Throwable $e ) { AE_Logger::write( 'warning', 'run_now_failed', array( 'error' => $e->getMessage() ) ); }
+	}
+
+	/**
+	 * O servidor consegue chamar o próprio endereço? Se não, o WP-Cron nunca dispara (comum em homologação atrás de NAT).
+	 * Resultado em cache por 10 min; só a tela de admin consulta.
+	 *
+	 * @return array{ok:bool,error:string,url:string}
+	 */
+	public static function loopback_status(): array {
+		$cached = get_transient( 'ae_loopback_status' );
+		if ( is_array( $cached ) ) { return $cached; }
+		$url = rest_url();
+		$response = wp_remote_get( $url, array( 'timeout' => 5, 'redirection' => 2, 'sslverify' => (bool) apply_filters( 'https_local_ssl_verify', false ) ) );
+		$status = array( 'ok' => true, 'error' => '', 'url' => $url );
+		if ( is_wp_error( $response ) ) {
+			$status['ok'] = false;
+			$status['error'] = $response->get_error_message();
+		}
+		set_transient( 'ae_loopback_status', $status, 10 * MINUTE_IN_SECONDS );
+		return $status;
 	}
 
 	/** @return int Quantos jobs foram executados. */

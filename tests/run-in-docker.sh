@@ -9,7 +9,7 @@ CONTAINER="${TSE_APURACAO_CONTAINER:-revistaforum-app}"
 WP_PATH="${TSE_WP_PATH:-/var/www/html}"
 REL="${TSE_PLUGIN_REL:-wp-content/plugins/tse-apuracao}"
 status=0
-for t in tests/admin-smoke.php tests/wp-integration.php tests/wp-collect.php tests/wp-latency.php tests/wp-import-zip.php; do
+for t in tests/admin-smoke.php tests/wp-integration.php tests/wp-collect.php tests/wp-kick.php tests/wp-latency.php tests/wp-import-zip.php; do
 	echo "== $t"
 	docker exec -u www-data "$CONTAINER" wp --path="$WP_PATH" eval-file "$REL/$t" || status=1
 done

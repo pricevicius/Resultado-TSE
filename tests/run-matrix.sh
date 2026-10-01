@@ -31,7 +31,7 @@ $WP core install --url=http://localhost --title=matriz --admin_user=admin --admi
 $WP plugin activate tse-apuracao
 echo "== $TARGET: $($WP eval 'echo "PHP " . PHP_VERSION . " · WordPress " . get_bloginfo("version");')"
 status=0
-for t in admin-smoke wp-integration wp-collect wp-latency wp-import-zip; do
+for t in admin-smoke wp-integration wp-collect wp-kick wp-latency wp-import-zip; do
 	echo "== tests/$t.php"
 	$WP eval-file wp-content/plugins/tse-apuracao/tests/$t.php || status=1
 done
