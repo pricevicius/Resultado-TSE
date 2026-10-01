@@ -7,7 +7,7 @@ O que mudou em cada versão e por quê, da mais nova para a mais antiga. Comport
 Shortcode novo para a home, sem mudar a versão do plugin (2.6.1). Entrega uma faixa com kicker, título, link para a página de
 Apuração (a de Configuração → Navegação) e um carrossel de candidatos (foto, cargo, nome, partido), em cinza e ajustável por
 variáveis CSS `--ae-strip-*`. Os candidatos seguem o ranking do último snapshot válido da disputa (`ordem="ranking"`, padrão; `nome`
-é alfabética; `ids` fixa a ordem). `mostrar="votos|percentual"` põe uma linha sob o nome, inclusive "0 votos" antes da apuração, e
+é alfabética; `ids` fixa a ordem). `mostrar="votos"` (ou `percentual`) põe o percentual sob o nome, inclusive "0,00%" antes da apuração (`votos,percentual` acrescenta os votos absolutos; `absoluto`, só os votos), e
 a faixa de uma disputa só (cargo + UF, ou presidente) se atualiza pela REST local a cada `atualizar` segundos (padrão 60, mínimo 15,
 0 desliga), sem consultar o TSE. `layout="lista"` devolve só `<ul><li>`, sem CSS nem JS. CSS e JS (`ae-candidate-strip.*`) só
 carregam nas páginas que usam a faixa. Classe: `includes/class-candidate-list.php`.

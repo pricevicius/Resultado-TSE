@@ -21,8 +21,11 @@ final class AE_Candidate_List {
 		$photo = strtolower( sanitize_key( $a['foto'] ) );
 		$photo = in_array( $photo, array( 'nao', 'somente' ), true ) ? $photo : 'sim';
 		$show   = array_filter( array_map( 'trim', preg_split( '/[\s,]+/', strtolower( (string) $a['mostrar'] ) ) ) );
-		$votes  = in_array( 'votos', $show, true );
-		$pct    = in_array( 'percentual', $show, true );
+		// "votos" e "percentual" mostram o percentual (o número de manchete da apuração); os dois juntos acrescentam os votos absolutos; "absoluto" mostra só os votos.
+		$has_votes = in_array( 'votos', $show, true );
+		$has_pct   = in_array( 'percentual', $show, true );
+		$pct       = $has_votes || $has_pct;
+		$votes     = ( $has_votes && $has_pct ) || in_array( 'absoluto', $show, true );
 		$strip = 'lista' !== strtolower( sanitize_key( $a['layout'] ) );
 		$ids   = array_values( array_unique( array_filter( array_map( 'sanitize_text_field', explode( ',', (string) $a['ids'] ) ), 'strlen' ) ) );
 		$ids   = array_map( 'trim', $ids );
@@ -92,12 +95,12 @@ final class AE_Candidate_List {
 		return (string) ob_get_clean();
 	}
 
-	/** "1.234 votos · 48,30%"; sem resultado ainda, "0 votos · 0,00%" (o número aparece mesmo zerado). */
+	/** "48,30% · 1.234 votos"; sem resultado ainda, "0,00%" / "0 votos" (o número aparece mesmo zerado). */
 	private static function votes_text( array $row, bool $votes, bool $pct ): string {
 		$n     = (int) ( $row['votes'] ?? 0 );
 		$parts = array();
-		if ( $votes ) { $parts[] = number_format_i18n( $n ) . ( 1 === $n ? ' voto' : ' votos' ); }
 		if ( $pct ) { $parts[] = number_format_i18n( (float) ( $row['percentage'] ?? 0 ), 2 ) . '%'; }
+		if ( $votes ) { $parts[] = number_format_i18n( $n ) . ( 1 === $n ? ' voto' : ' votos' ); }
 		$text = implode( ' · ', $parts );
 		return ! empty( $row['elected'] ) ? $text . ' · Eleito' : $text;
 	}
