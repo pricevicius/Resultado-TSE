@@ -23,6 +23,23 @@ final class AE_Plugin {
 		return self::$instance ??= new self();
 	}
 
+	/**
+	 * Requisitos de ambiente sem os quais o plugin não deve ser ativado. Hoje: a extensão PHP zip
+	 * (classe ZipArchive), que a importação de candidatos usa para abrir o pacote dos Dados Abertos.
+	 * Quem desenvolve ou testa sem a extensão pode definir TSE_APURACAO_ALLOW_NO_ZIP como true no
+	 * wp-config.php, ou usar o filtro ae_missing_requirements; em produção, não faça isso.
+	 *
+	 * @return string[] Descrição de cada requisito que falta (vazio = tudo certo).
+	 */
+	public static function missing_requirements(): array {
+		$missing = array();
+		$allow = defined( 'TSE_APURACAO_ALLOW_NO_ZIP' ) && TSE_APURACAO_ALLOW_NO_ZIP;
+		if ( ! class_exists( 'ZipArchive' ) && ! $allow ) {
+			$missing[] = 'a extensão PHP zip (classe ZipArchive), usada para importar os candidatos do pacote ZIP dos Dados Abertos do TSE. Instale o pacote php-zip no servidor (por exemplo, apt install php-zip, ou o equivalente da sua versão do PHP) e reinicie o PHP-FPM ou o Apache';
+		}
+		return array_values( (array) apply_filters( 'ae_missing_requirements', $missing ) );
+	}
+
 	public static function activate(): void {
 		add_filter( 'cron_schedules', array( self::instance(), 'minute_schedule' ) );
 		AE_Schema::install();

@@ -1,6 +1,6 @@
 # TSE Apuração — pendências e pontos em aberto
 
-Estado em **01/10/2026**, versão **2.5.0**. Este arquivo é a lista do que ainda **não** foi feito, do que foi validado só em parte e do que depende do ambiente de cada projeto. O que já foi entregue está em [DOCUMENTACAO-PLUGIN-APURACAO.md](DOCUMENTACAO-PLUGIN-APURACAO.md).
+Estado em **01/10/2026**, versão **2.5.1**. Este arquivo é a lista do que ainda **não** foi feito, do que foi validado só em parte e do que depende do ambiente de cada projeto. O que já foi entregue está em [DOCUMENTACAO-PLUGIN-APURACAO.md](DOCUMENTACAO-PLUGIN-APURACAO.md).
 
 Está dividido em: **A.** código do plugin, **B.** validação que ficou parcial, **C.** implantação em cada projeto, **D.** decisões já tomadas, **E.** como publicar e retomar.
 
@@ -37,7 +37,7 @@ Os testes de coleta foram verificados também no sentido contrário: tirando de 
 
 **Ainda não exercitado:**
 - o comportamento do **TSE de verdade**: tempo de rede, bloqueio por IP, formato exato dos arquivos de hoje (não há mais simulado; o `tests/wp-collect.php` reproduz o formato documentado, não o tráfego real);
-- a importação do **ZIP** real: o container local não tem `php-zip`, então os testes usam CSV (mesmo caminho de leitura e marcação, sem a abertura do ZIP);
+- a importação do **ZIP** real: o container local não tem `php-zip` (e, desde a 2.5.1, o plugin não ativa sem ela; no ambiente local ele já estava ativo, por isso só mostra o aviso), então os testes usam CSV (mesmo caminho de leitura e marcação, sem a abertura do ZIP);
 - o **JavaScript no navegador de verdade**: a lógica do `tse-resumo.js` foi testada em Node com um DOM mínimo (`tests/js/resumo-dom.test.js`), não num navegador; vale olhar o `[tse_apuracao_resumo]` numa página real (layout, tema e celular);
 - **concorrência e carga**: vários workers ao mesmo tempo, muitas UFs ligadas, picos de leitores na REST.
 
@@ -47,7 +47,7 @@ Não se resolve no código do plugin. Serve de checklist de implantação.
 
 - [ ] **Cron de sistema** rodando `bin/tse-tick-loop.sh`, com `TSE_APURACAO_CONTAINER` (se usar Docker), `TSE_APURACAO_PLUGIN_PATH` e `TSE_APURACAO_LOG_FILE` declaradas **dentro do crontab** (ele não herda variáveis do shell). Confirmar que a Visão geral mostra "Último tick … (cron do sistema)" e que o log cresce.
 - [ ] **Versão e ponteiro:** o site está na versão esperada. Se o plugin é submódulo, o ponteiro no repositório do site foi atualizado e a branch é a certa (`main` para PHP 8.1+, `php7.4` para PHP 7.4).
-- [ ] **PHP e banco:** extensão `php-zip` ativa (o container Docker local **não** a tem: a importação do ZIP não roda ali) e tabelas InnoDB (a Visão geral agora avisa).
+- [ ] **PHP e banco:** extensão `php-zip` **instalada antes de ativar** (requisito de ativação desde a 2.5.1: sem ela o plugin recusa ativar; `php -m | grep -i zip`). O container Docker local **não** a tem: adicione `php-zip` ao `docker/Dockerfile` (arquivo do projeto, fora do plugin) para a importação do ZIP rodar ali. Tabelas InnoDB (a Visão geral avisa).
 - [ ] **Cache de página e CDN:** `ae_pagina`, `ae_busca`, `ae_cargo`, `ae_uf` e `ae_partido` não podem ser ignorados na chave de cache; as REST `apuracao/v1/results` e `tse/v1/resultado` mandam `Cache-Control` público para a borda guardar.
 - [ ] **Decidir** Redis/Memcached e CDN.
 - [ ] **Reimportar os candidatos** perto da eleição (o CSV muda todo dia): clicar em "Buscar e importar candidatos" ou ligar a reimportação automática (aba Importar e coletar). Desligar na noite da eleição.
