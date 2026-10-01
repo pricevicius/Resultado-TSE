@@ -736,6 +736,111 @@ padrão do MySQL e do MariaDB atuais; o esquema não fixa o engine).
 **Slack removido:** o plugin não se comunica mais com Slack nem com nenhum serviço de alerta
 (ver "Saúde do disparo"). O aviso de cron parado e o campo `tick` da REST de saúde continuam.
 
+## Catálogo de candidatos: paginação — versão 2.4.1
+
+O catálogo (`[apuracao_candidatos]`, `AE_Candidate_Catalog`) tinha um `LIMIT 60` fixo e não
+tinha controle de página: com mais de 60 candidatos, só os 60 primeiros por ordem alfabética
+apareciam, e o contador ("N candidatos encontrados") mostrava no máximo 60. Em SP, por
+exemplo, Deputado Estadual passa de mil candidatos.
+
+**Comportamento**
+
+- **24 candidatos por página** por padrão (múltiplo de 3, fecha a grade de 3 colunas).
+  Ajustável por atributo, `[apuracao_candidatos por_pagina="12"]` (de 1 a 200), ou pelo
+  filtro `ae_catalog_per_page`. O atributo vale sobre o filtro.
+- **Total real:** uma consulta de contagem separada informa "1.487 candidatos encontrados ·
+  mostrando 1–24". Com 1 candidato: "1 candidato encontrado"; com 0: "Nenhum candidato
+  encontrado".
+- **Navegação:** `Anterior / 1 2 3 … 12 / Próxima` (`paginate_links`, dentro de
+  `<nav class="ae-catalog-pagination">`). **Só aparece quando há mais de uma página.** Com
+  24 resultados ou menos (ou `por_pagina` maior que o total) não há navegação, por design.
+- **Parâmetro de URL:** `?ae_pagina=N`. É deliberadamente diferente de `paged`: numa página
+  estática o WordPress trata `paged` como paginação de arquivo. O catálogo também usa
+  `ae_busca`, `ae_cargo`, `ae_uf`, `ae_partido` e `ae_candidato` (ficha).
+- **Filtros preservados:** os links de página carregam os filtros ativos (com os valores
+  codificados). Buscar ou trocar um filtro volta para a página 1.
+- **Página fora do intervalo** (`ae_pagina=99`, `0` ou texto) é ajustada para a última ou a
+  primeira página, sem erro.
+- **Ordem estável:** `ORDER BY ballot_name ASC, id ASC`. O `id` desempata homônimos; sem ele,
+  nomes iguais podem repetir ou pular candidatos entre páginas.
+- **Âncora:** o botão **Buscar** e os links de página terminam em `#ae-catalog-lista`
+  (o contador logo acima dos cards), então o navegador desce direto para a lista em vez de
+  voltar ao topo da página.
+- **Escopo:** a lista mostra só o que foi importado, que são **titulares** (vice e suplentes
+  não são importados). Um catálogo pequeno pode ser falta de importação, não de paginação.
+
+**Estilo:** `assets/css/tse-apuracao.css`, bloco "Paginação do catálogo de candidatos"
+(`.ae-catalog-pagination`, `.page-numbers`, `.current`, `.dots`). A marcação é a padrão do
+`paginate_links` (`type=list`), então um tema que estilize `.page-numbers` também a afeta.
+
+### A paginação não aparece: roteiro de diagnóstico
+
+Siga na ordem; o primeiro item explica a maioria dos casos.
+
+1. **O site está com a versão certa?** A paginação existe a partir da **2.4.1**. Veja a versão
+   no cabeçalho de `tse-apuracao.php` ou no canto da tela **Apuração**. Se for menor:
+   - plugin em pasta comum: atualize os arquivos;
+   - plugin como **submódulo git**: atualize o repositório do plugin **e** o ponteiro do
+     submódulo no repositório do site (`git add <caminho do plugin>` + commit). Esquecer o
+     ponteiro deixa o site com o código velho;
+   - confirme a **branch**: `main`/`master` exige PHP 8.1+; `php7.4` é a variante para PHP 7.4.
+     As duas recebem as mesmas correções, mas o site precisa estar na branch que usa.
+2. **Há mais de 24 resultados no filtro atual?** Com 24 ou menos não existe navegação.
+   Teste sem filtros, ou com `por_pagina="6"` para forçar várias páginas.
+3. **O shortcode é o certo?** `[apuracao_candidatos]` (plural) é o catálogo paginado.
+   `[tse_apuracao]` e `[tse_apuracao_card]` são os placares e não têm catálogo.
+4. **Cache de página** (WP Rocket e similares, FastCGI do nginx, Cloudflare). HTML antigo em
+   cache continua sem a navegação, e um cache que **ignora a query string** serve a página 1
+   para todo `?ae_pagina=N`. Limpe o cache e garanta que `ae_pagina`, `ae_busca`, `ae_cargo`,
+   `ae_uf` e `ae_partido` façam parte da chave de cache (ou que essas URLs não sejam
+   cacheadas). O polling do placar não é afetado por isso, mas o catálogo é HTML renderizado.
+5. **CSS antigo ou minificado.** Os assets são versionados por `AE_VERSION` (`?ver=2.4.1`),
+   mas plugins de otimização e CDN podem manter o CSS velho. Sem o CSS novo a navegação ainda
+   existe, só aparece como lista simples. Para confirmar que ela foi gerada, procure no HTML:
+
+   ```bash
+   curl -s 'https://SEU-SITE/pagina-do-catalogo/?ae_uf=SP' | grep -c 'ae-catalog-pagination'
+   ```
+
+   Resultado `0` com mais de 24 candidatos indica código desatualizado ou cache; `1` indica que
+   o HTML está certo e o problema é CSS/tema.
+6. **O tema esconde ou sobrescreve** `nav`, `.page-numbers` ou `ul` dentro do conteúdo.
+   Inspecione o elemento `.ae-catalog-pagination` no navegador.
+7. **O catálogo mostra poucos candidatos mesmo assim?** Confira quantos foram importados em
+   **Apuração > Visão geral > Candidatos**. A importação traz só o CSV da UF e os cargos das
+   disputas ligadas, e só titulares.
+
+### Como testar em WordPress real (Docker)
+
+Sem depender do site de produção. Precisa só de Docker.
+
+```bash
+docker network create tse-test
+docker run -d --name tse-db --network tse-test -e MARIADB_ROOT_PASSWORD=x -e MARIADB_DATABASE=wp mariadb:10.11
+docker run -d --name tse-wp --network tse-test \
+  -e WORDPRESS_DB_HOST=tse-db -e WORDPRESS_DB_USER=root -e WORDPRESS_DB_PASSWORD=x -e WORDPRESS_DB_NAME=wp \
+  -v "$PWD":/var/www/html/wp-content/plugins/tse-apuracao:ro wordpress:php8.2-apache   # php7.4-apache para a branch php7.4
+docker exec tse-wp sh -c 'curl -sL -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && chmod +x /usr/local/bin/wp'
+docker exec tse-wp wp --allow-root core install --url=http://localhost --title=T --admin_user=a --admin_password=a --admin_email=a@a.com --skip-email
+docker exec tse-wp wp --allow-root plugin activate tse-apuracao
+```
+
+Depois insira candidatos de teste em `wp_ae_candidates` (com `election_id`, `contest_id` e
+`ballot_name`) e renderize com `wp eval 'echo do_shortcode("[apuracao_candidatos]");'`
+(simule filtros com `$_GET['ae_uf']='SP'; $_GET['ae_pagina']=2;`). Verificações feitas na 2.4.1,
+com 100 candidatos de SP (incluindo homônimos) e 3 do ES:
+
+| Caso | Resultado |
+| --- | --- |
+| páginas 1 a 5 | 24, 24, 24, 24 e 4 cards; 100 ids únicos de 100 (sem repetir nem pular) |
+| contador | "100 candidatos encontrados · mostrando 1–24"; última página "97–100" |
+| `ae_pagina=99` / `0` / `abc` | última / primeira / primeira página |
+| conjunto pequeno (3, 4 e 10 resultados) | sem navegação |
+| nenhum resultado | "Nenhum candidato encontrado", sem navegação |
+| `por_pagina="10"` | 10 cards e páginas 1 a 10; `por_pagina="9999"` limita a 200 |
+| cargo + partido + página 2 | filtros mantidos nos links de página |
+| links | terminam em `#ae-catalog-lista` |
+
 ## Repositório — código movido para submódulo (22/09/2026)
 
 O plugin deixou de viver dentro dos monorepos de site. Fonte de verdade agora é
