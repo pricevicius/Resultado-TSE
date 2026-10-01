@@ -651,6 +651,31 @@ banco, sempre frescos). Duas causas distintas, ambas endereçadas:
 - a saúde REST informa se `ZipArchive` está disponível. A importação de CSVs em
   ZIP requer `php-zip` no ambiente.
 
+## Saúde do disparo da coleta — versão 2.3.8
+
+Motivo: o cron de sistema (`bin/tse-tick-loop.sh`) já parou em silêncio duas vezes
+(variável `TSE_APURACAO_CONTAINER` fora do crontab → `php: not found`), e a tela de
+saúde só mostrava o "próximo ciclo" do WP-Cron, que continuava aparecendo como ok.
+
+- `AE_Job_Runner::tick()` registra um batimento (`ae_last_tick_at`, `ae_last_tick_source`)
+  e, quando vem de CLI, também `ae_last_cli_tick_at`. O tick de CLI é registrado
+  **à parte** porque o WP-Cron por tráfego mantém "algum tick" fresco mesmo com o cron
+  de sistema morto, que é exatamente o caso a detectar.
+- `AE_Job_Runner::tick_status()` devolve `stale` (nenhum tick de qualquer origem há mais de
+  5 min, com disputas ligadas), `cli_stopped` (o cron de sistema já funcionou e passou
+  de 2 min sem disparar) e `cli_never` (nunca houve tick de CLI: depende só do tráfego).
+  Limites ajustáveis pelos filtros `ae_tick_stale_seconds` e `ae_cli_tick_stale_seconds`.
+- **Visão geral:** linha "Último tick" (com a origem: cron do sistema ou WP-Cron) e avisos
+  no topo — vermelho para coleta parada, amarelo para cron de sistema parado, nota para
+  "cron de sistema não detectado". Nada aparece se não houver disputa ligada.
+- **REST** `apuracao/v1/admin/health`: novo campo `tick`.
+- **Slack** (se o webhook estiver configurado): `stale` e `cli_stopped` entram no alerta
+  imediato, e o snapshot de 15 min mostra a idade do último tick.
+- **`bin/tse-tick-loop.sh`:** sem container configurado e sem `php` no host, ou com
+  container configurado e sem `docker`, o script grava a mensagem no log, escreve em
+  stderr e sai com código 1, em vez de falhar a cada 15 s sem aviso. Cada falha de tick
+  ganha uma linha com data e código de saída.
+
 ## Repositório — código movido para submódulo (22/09/2026)
 
 O plugin deixou de viver dentro dos monorepos de site. Fonte de verdade agora é

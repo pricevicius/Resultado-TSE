@@ -46,7 +46,7 @@ final class AE_Slack_Report {
 	}
 
 	private static function maybe_send_alert( string $webhook, array $health ): void {
-		$problem = $health['blocked_until'] > time() || $health['stale_contests'] >= 5;
+		$problem = $health['blocked_until'] > time() || $health['stale_contests'] >= 5 || $health['tick']['stale'] || $health['tick']['cli_stopped'];
 		$was_problem = (bool) get_option( 'ae_slack_report_problem_state', false );
 
 		if ( ! $problem ) {
@@ -88,6 +88,7 @@ final class AE_Slack_Report {
 			'blocked_until'  => absint( get_option( 'ae_tse_blocked_until', 0 ) ),
 			'environment'    => (string) get_option( 'ae_tse_environment', 'oficial' ),
 			'last_snapshot'  => $last_snapshot ? (string) $last_snapshot : null,
+			'tick'           => AE_Job_Runner::tick_status(),
 		) );
 	}
 
@@ -117,6 +118,12 @@ final class AE_Slack_Report {
 		$lines[] = "• Fila: *{$h['jobs_pending']}* pendente(s), *{$h['jobs_failed']}* falhada(s){$fila_icon}";
 		$stale_icon = $h['stale_contests'] > 0 ? ' ⚠️' : ' ✅';
 		$lines[] = "• Disputas atrasadas (>3min sem checagem): *{$h['stale_contests']}*{$stale_icon}";
+		$tick = $h['tick'];
+		if ( $tick['stale'] || $tick['cli_stopped'] ) {
+			$lines[] = '• 🔴 Disparo da coleta parado (ver alerta)';
+		} elseif ( null !== $tick['age'] ) {
+			$lines[] = '• Disparo da coleta: último tick há *' . max( 0, (int) $tick['age'] ) . 's* ✅' . ( $tick['cli_never'] ? ' (só WP-Cron, sem cron de sistema)' : '' );
+		}
 		if ( $h['blocked_until'] > time() ) {
 			$lines[] = '• 🔴 Coleta pausada pelo TSE até ' . gmdate( 'H:i:s', $h['blocked_until'] ) . ' UTC';
 		}
@@ -130,6 +137,13 @@ final class AE_Slack_Report {
 		}
 		if ( $h['stale_contests'] >= 5 ) {
 			$lines[] = "*{$h['stale_contests']}* disputas sem checagem há mais de 3 minutos — mesmo padrão do incidente de 15/09 (fila represada). Ver Apuração → Fila e progresso.";
+		}
+		$tick = $h['tick'];
+		if ( $tick['cli_stopped'] ) {
+			$lines[] = 'O cron de sistema (bin/tse-tick-loop.sh) não dispara há *' . (int) $tick['cli_age'] . 's*. A coleta segue só pelo WP-Cron por tráfego, que é irregular. Causa comum: variável TSE_APURACAO_CONTAINER fora do crontab (o crontab não herda variáveis do shell) ou container renomeado. Confira se o log do tick está crescendo.';
+		}
+		if ( $tick['stale'] ) {
+			$lines[] = 'Nenhum disparo do worker há *' . (int) $tick['age'] . 's* com disputas ligadas: os resultados publicados estão congelados.';
 		}
 		return implode( "\n", $lines );
 	}

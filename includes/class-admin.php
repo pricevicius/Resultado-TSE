@@ -32,10 +32,10 @@ final class AE_Admin {
 			'elections'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$p}elections"), 'contests'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$p}contests WHERE active=1"), 'enabled'=>$this->count_enabled_contests(), 'candidates'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$p}candidates"), 'snapshots'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$p}snapshots WHERE status='valid'") ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$next = wp_next_scheduled( 'ae_run_jobs' );
 		// "Sincronizadas" = existem no banco (o EA11 sempre traz as 27 UFs); "Habilitadas" = de fato coletando/importando — evita o rotulo antigo ("Disputas ativas") dar a entender que tudo esta sendo importado.
-		$this->setup_guide(); ?><div class="ae-grid ae-stats"><?php foreach ( array( 'elections'=>'Eleições', 'contests'=>'Disputas sincronizadas', 'enabled'=>'Habilitadas p/ coleta', 'candidates'=>'Candidatos', 'snapshots'=>'Snapshots válidos' ) as $key=>$label ) : ?><div class="ae-card"><strong><?php echo esc_html( number_format_i18n( $counts[$key] ) ); ?></strong><span><?php echo esc_html( $label ); ?></span></div><?php endforeach; ?></div>
+		$this->tick_notice(); $this->setup_guide(); ?><div class="ae-grid ae-stats"><?php foreach ( array( 'elections'=>'Eleições', 'contests'=>'Disputas sincronizadas', 'enabled'=>'Habilitadas p/ coleta', 'candidates'=>'Candidatos', 'snapshots'=>'Snapshots válidos' ) as $key=>$label ) : ?><div class="ae-card"><strong><?php echo esc_html( number_format_i18n( $counts[$key] ) ); ?></strong><span><?php echo esc_html( $label ); ?></span></div><?php endforeach; ?></div>
 		<?php if ( $counts['contests'] > 0 && $counts['enabled'] < $counts['contests'] ) : ?><p class="description">Sincronizar sempre traz o catálogo nacional do TSE (todas as UFs) — só as <strong><?php echo esc_html( number_format_i18n( $counts['enabled'] ) ); ?></strong> disputas "habilitadas p/ coleta" são de fato coletadas e entram na importação de candidatos. Ajuste em <a href="<?php echo esc_url( $this->url( 'selecao' ) ); ?>">Seleção de disputas</a>.</p><?php endif; ?>
 		<div class="ae-grid ae-two"><section class="ae-panel"><h2>Comece em três passos</h2><ol class="ae-steps"><li><span>1</span><div><strong>Sincronize com o TSE</strong><p>O plugin lê o EA11 e cria eleições, cargos, turnos e fontes oficiais.</p><a class="button" href="<?php echo esc_url($this->url('setup')); ?>">Sincronizar</a></div></li><li><span>2</span><div><strong>Importe candidatos</strong><p>O arquivo oficial de Dados Abertos é localizado automaticamente.</p><a class="button" href="<?php echo esc_url($this->url('import')); ?>">Importar</a></div></li><li><span>3</span><div><strong>Publique o componente</strong><p>Bloco e shortcode atualizam no cliente pela API do seu WordPress.</p><a class="button button-primary" href="<?php echo esc_url($this->url('import')); ?>#ae-collection">Ver coleta</a></div></li></ol></section>
-		<section class="ae-panel"><h2>Saúde</h2><dl class="ae-health"><dt>Banco</dt><dd><span class="ae-dot ae-ok"></span> schema <?php echo esc_html((string)get_option('ae_schema_version','não instalado')); ?></dd><dt>Processador</dt><dd><?php echo $next ? '<span class="ae-dot ae-ok"></span> próximo ciclo em '.esc_html(human_time_diff(time(),$next)) : '<span class="ae-dot ae-bad"></span> cron não agendado'; ?></dd><dt>Último snapshot</dt><dd><?php echo esc_html((string)($wpdb->get_var("SELECT MAX(captured_at) FROM {$p}snapshots WHERE status='valid'") ?: 'ainda não recebido')); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared ?></dd></dl><?php $this->run_button(); ?></section></div><?php
+		<section class="ae-panel"><h2>Saúde</h2><dl class="ae-health"><dt>Banco</dt><dd><span class="ae-dot ae-ok"></span> schema <?php echo esc_html((string)get_option('ae_schema_version','não instalado')); ?></dd><dt>Processador</dt><dd><?php echo $next ? '<span class="ae-dot ae-ok"></span> próximo ciclo em '.esc_html(human_time_diff(time(),$next)) : '<span class="ae-dot ae-bad"></span> cron não agendado'; ?></dd><dt>Último tick</dt><dd><?php echo wp_kses_post( $this->tick_health_html() ); ?></dd><dt>Último snapshot</dt><dd><?php echo esc_html((string)($wpdb->get_var("SELECT MAX(captured_at) FROM {$p}snapshots WHERE status='valid'") ?: 'ainda não recebido')); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared ?></dd></dl><?php $this->run_button(); ?></section></div><?php
 	}
 
 	private function tab_setup(): void {
@@ -291,6 +291,36 @@ final class AE_Admin {
 	}
 
 	/** Conta quantas disputas ativas têm collection.enabled=true (ou omisso, que também conta como ligado) — usado no card "Habilitadas p/ coleta" da Visão geral. */
+	/** "há 12 s", "há 3 min" — curto o bastante para caber na linha de saúde. */
+	private function short_age( int $seconds ): string {
+		if ( $seconds < 90 ) { return 'há ' . max( 0, $seconds ) . ' s'; }
+		return 'há ' . human_time_diff( time() - $seconds, time() );
+	}
+
+	/** Linha "Último tick" da tela de saúde: mostra de onde veio o último disparo do worker. */
+	private function tick_health_html(): string {
+		$tick = AE_Job_Runner::tick_status();
+		if ( null === $tick['age'] ) { return '<span class="ae-dot ae-bad"></span> nunca executou'; }
+		$origin = 'cli' === $tick['source'] ? 'cron do sistema' : 'WP-Cron';
+		$bad = $tick['stale'] || $tick['cli_stopped'];
+		return '<span class="ae-dot ' . ( $bad ? 'ae-bad' : 'ae-ok' ) . '"></span> ' . esc_html( $this->short_age( (int) $tick['age'] ) . ' (' . $origin . ')' );
+	}
+
+	/** Avisos no topo da Visão geral quando o disparo da coleta parou ou depende só do tráfego. */
+	private function tick_notice(): void {
+		$tick = AE_Job_Runner::tick_status();
+		if ( $tick['enabled_contests'] < 1 ) { return; }
+		$style = 'border-left:4px solid #d63638;padding:1px 12px;margin:12px 0;';
+		$how = 'Para coletar sem depender de visitas, agende o cron de sistema com bin/tse-tick-loop.sh e declare TSE_APURACAO_CONTAINER (se usar Docker), TSE_APURACAO_PLUGIN_PATH e TSE_APURACAO_LOG_FILE dentro do próprio crontab — o crontab não herda variáveis do shell.';
+		if ( $tick['stale'] ) {
+			echo '<div class="notice notice-error inline" style="' . esc_attr( $style ) . '"><p><strong>Coleta parada:</strong> o processador não roda ' . esc_html( $this->short_age( (int) $tick['age'] ) ) . '. Com disputas ligadas, os resultados publicados ficam congelados. ' . esc_html( $how ) . '</p></div>';
+		} elseif ( $tick['cli_stopped'] ) {
+			echo '<div class="notice notice-warning inline" style="' . esc_attr( $style ) . '"><p><strong>Cron de sistema parou:</strong> o último disparo dele foi ' . esc_html( $this->short_age( (int) $tick['cli_age'] ) ) . '. A coleta continua só pelo WP-Cron, que depende de tráfego e é irregular. Confira se o crontab e as variáveis ainda estão corretos e se o log de ' . esc_html( 'TSE_APURACAO_LOG_FILE' ) . ' está crescendo.</p></div>';
+		} elseif ( $tick['cli_never'] ) {
+			echo '<p class="description">Cron de sistema não detectado: a coleta depende do tráfego do site (WP-Cron). ' . esc_html( $how ) . '</p>';
+		}
+	}
+
 	private function count_enabled_contests(): int {
 		global $wpdb; $p = $wpdb->prefix . 'ae_';
 		$rows = $wpdb->get_col( "SELECT config_json FROM {$p}contests WHERE active=1" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared

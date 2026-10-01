@@ -64,7 +64,7 @@ final class AE_REST {
 
 	public function health(): WP_REST_Response {
 		global $wpdb; $p = $wpdb->prefix . 'ae_';
-		return new WP_REST_Response( array( 'schema' => get_option( 'ae_schema_version' ), 'cron_next' => wp_next_scheduled( 'ae_run_jobs' ), 'zip_available' => class_exists( 'ZipArchive' ), 'jobs' => array( 'queued' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}jobs WHERE state IN ('queued','retry')" ), 'failed' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}jobs WHERE state='failed'" ) ), 'latest_snapshot' => $wpdb->get_var( "SELECT MAX(captured_at) FROM {$p}snapshots WHERE status='valid'" ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return new WP_REST_Response( array( 'schema' => get_option( 'ae_schema_version' ), 'cron_next' => wp_next_scheduled( 'ae_run_jobs' ), 'zip_available' => class_exists( 'ZipArchive' ), 'jobs' => array( 'queued' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}jobs WHERE state IN ('queued','retry')" ), 'failed' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}jobs WHERE state='failed'" ) ), 'latest_snapshot' => $wpdb->get_var( "SELECT MAX(captured_at) FROM {$p}snapshots WHERE status='valid'" ), 'tick' => AE_Job_Runner::tick_status() ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	}
 
 	private function cached_response( WP_REST_Request $request, array $data, ?string $modified ): WP_REST_Response {
