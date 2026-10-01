@@ -5,6 +5,12 @@
  */
 defined( 'WP_UNINSTALL_PLUGIN' ) || exit;
 
+// Estado do antigo relatório do Slack (removido do plugin). Não são registros eleitorais,
+// então saem mesmo sem o opt-in abaixo.
+foreach ( array( 'ae_slack_report_last_sent', 'ae_slack_report_problem_state', 'ae_slack_report_last_alert' ) as $legacy_option ) {
+	delete_option( $legacy_option );
+}
+
 if ( ! get_option( 'ae_delete_data_on_uninstall' ) ) {
 	return;
 }
