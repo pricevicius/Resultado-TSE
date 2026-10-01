@@ -116,6 +116,7 @@ Ao publicar, confira se a skill em `.claude/skills/tse-apuracao/` reflete a muda
 tests/run-in-docker.sh      # suítes no container do site (admin, integração, coleta, latência, POSTs do admin)
 tests/run-with-zip.sh       # importação do ZIP real, num container descartável com php-zip
 tests/run-concurrency.sh    # 4 workers na mesma fila
+tools/check-branches.sh      # as três branches coerentes: commits, php7.2 = port da php7.4, versão e lint em 8.2/7.4/7.2
 # PHP e WordPress antigos (git worktree da branch, containers descartáveis):
 git worktree add /tmp/plugin-php74 php7.4 && tests/run-matrix.sh php74 /tmp/plugin-php74
 git worktree add /tmp/plugin-php72 php7.2 && tests/run-matrix.sh php72 /tmp/plugin-php72
