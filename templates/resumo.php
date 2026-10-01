@@ -15,8 +15,8 @@ defined( 'ABSPATH' ) || exit;
 	<?php else : ?>
 	<ul class="tse-resumo-lista">
 		<?php foreach ( $rows as $row ) : $lider = $row['lider']; $dados = $row['dados']; ?>
-		<li class="tse-resumo-item" data-cargo="<?php echo esc_attr( $row['cargo'] ); ?>" data-uf="<?php echo esc_attr( $row['uf'] ); ?>" data-turno="<?php echo esc_attr( (string) $row['turno'] ); ?>" data-limite="<?php echo esc_attr( (string) $limite ); ?>">
-			<span class="tse-resumo-disputa"><?php echo esc_html( $row['rotulo'] ); ?></span>
+		<li class="tse-resumo-item" data-cargo="<?php echo esc_attr( $row['cargo'] ); ?>" data-uf="<?php echo esc_attr( $row['uf'] ); ?>" data-turno="<?php echo esc_attr( $row['turno'] > 0 ? (string) $row['turno'] : 'auto' ); ?>" data-limite="<?php echo esc_attr( (string) $limite ); ?>">
+			<span class="tse-resumo-disputa"><?php echo esc_html( $row['rotulo'] ); ?></span><span class="tse-turno-selo"<?php echo $row['turno_atual'] > 1 ? '' : ' hidden'; ?>><?php echo esc_html( $row['turno_atual'] > 1 ? $row['turno_atual'] . 'º turno' : '' ); ?></span>
 			<?php if ( $lider ) : ?>
 			<ol class="tse-resumo-candidatos">
 				<?php foreach ( $row['candidatos'] as $cand ) : ?>

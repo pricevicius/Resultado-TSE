@@ -19,25 +19,88 @@
 		return 'Ao vivo';
 	}
 
+	// Blocos iguais na mesma página (o mesmo cargo/UF/turno mais de uma vez) pedem a mesma URL: a resposta é compartilhada por
+	// alguns segundos, então a REST recebe uma requisição só, e não uma por bloco. Os blocos não dividem estado (cada um lê e
+	// escreve só no próprio elemento) e os ids são únicos por bloco, então repetir um shortcode não gera conflito.
+	const recentes = new Map();
+	function getJson( url ) {
+		const hit = recentes.get( url );
+		if ( hit && Date.now() - hit.t < 5000 ) return hit.p;
+		const p = fetch( url, { headers: { 'X-WP-Nonce': nonce } } ).then( r => r.ok ? r.json() : Promise.reject( r.status ) );
+		recentes.set( url, { t: Date.now(), p } );
+		p.catch( () => recentes.delete( url ) );
+		return p;
+	}
+	window.TSEGetJson = getJson;
+
     function updateWidget( widget ) {
         const cargo   = widget.dataset.cargo;
         const uf      = widget.dataset.uf;
         const limite  = widget.dataset.limite || 10;
-		const turno   = widget.dataset.turno || 1;
-		const url     = `${ restUrl }?cargo=${ encodeURIComponent( cargo ) }&uf=${ encodeURIComponent( uf ) }&turno=${ turno }&limite=${ limite }`;
+		const turno   = widget.dataset.turno || 'auto'; // 'auto' segue o turno em andamento; 1 e 2 fixam
+		const url     = `${ restUrl }?cargo=${ encodeURIComponent( cargo ) }&uf=${ encodeURIComponent( uf ) }&turno=${ turno === 'auto' ? 0 : encodeURIComponent( turno ) }&limite=${ limite }`;
 		const apply   = widget.classList.contains( 'tse-card-secao' ) ? applySecaoUpdate
 			: widget.classList.contains( 'tse-card' ) ? applyCardUpdate
 			: applyUpdate;
 
-        fetch( url, { headers: { 'X-WP-Nonce': nonce } } )
-            .then( r => r.ok ? r.json() : Promise.reject( r.status ) )
-			.then( data => apply( widget, data ) )
+        getJson( url )
+			// Resposta de um pedido antigo (o visitante trocou de turno no seletor enquanto ela vinha) não pode sobrescrever a escolha.
+			.then( data => { if ( ( widget.dataset.turno || 'auto' ) === turno ) apply( widget, data ); } )
             .catch( () => {} ); // falha silenciosa — mantém conteúdo anterior
     }
+
+	// Selo "2º turno" (some no 1º turno). Serve a todos os widgets: cada um tem um .tse-turno-selo no cabeçalho.
+	function syncSelo( widget, data ) {
+		const turno = parseInt( data.turno, 10 ) || 1;
+		widget.dataset.turnoAtual = String( turno );
+		const selo = widget.querySelector( '.tse-turno-selo' );
+		if ( ! selo ) return;
+		selo.textContent = turno > 1 ? turno + 'º turno' : '';
+		selo.hidden = turno <= 1;
+	}
+
+	// Seletor de turno (só [tse_apuracao]): aparece sozinho quando o TSE devolve o 2º turno e troca o bloco sem recarregar.
+	function syncSeletor( widget, data ) {
+		const nav = widget.querySelector( '.tse-turnos' );
+		if ( ! nav ) return;
+		const turnos = ( data.turnos || [] ).map( Number );
+		const atual = parseInt( data.turno, 10 ) || 1;
+		const visivel = turnos.length > 1;
+		nav.hidden = ! visivel;
+		if ( ! visivel ) return;
+		const chave = turnos.join( ',' );
+		if ( nav.dataset.opcoes !== chave ) {
+			nav.dataset.opcoes = chave;
+			nav.replaceChildren();
+			turnos.forEach( t => {
+				const a = document.createElement( 'a' );
+				a.className = 'tse-turno-opcao';
+				a.dataset.turnoSel = String( t );
+				const url = new URL( window.location.href );
+				url.searchParams.set( 'ae_turno', t );
+				a.href = url.toString();
+				a.textContent = t + 'º turno';
+				nav.appendChild( a );
+			} );
+		}
+		nav.querySelectorAll( '.tse-turno-opcao' ).forEach( a => {
+			if ( Number( a.dataset.turnoSel ) === atual ) a.setAttribute( 'aria-current', 'true' ); else a.removeAttribute( 'aria-current' );
+		} );
+	}
+
+	document.addEventListener( 'click', ( e ) => {
+		const link = e.target.closest && e.target.closest( '.tse-turno-opcao' );
+		const widget = link && link.closest( '.tse-apuracao-widget' );
+		if ( ! widget || e.metaKey || e.ctrlKey || e.shiftKey ) return;
+		e.preventDefault();
+		widget.dataset.turno = link.dataset.turnoSel; // escolha manual: fixa o turno até a página recarregar
+		updateWidget( widget );
+	} );
 
 	// [tse_apuracao_card limite=">1"]: cabeçalho único (título + % apurado) para a grade toda.
 	function applySecaoUpdate( widget, data ) {
 		if ( ! data ) return;
+		syncSelo( widget, data );
 		const pctEl = widget.querySelector( '.tse-card-secao-pct' );
 		if ( pctEl && data.pct_apurado ) pctEl.textContent = data.pct_apurado + ' apurado';
 	}
@@ -63,6 +126,9 @@
 		if ( ! data ) return;
 		const posicao = parseInt( widget.dataset.posicao, 10 ) || 0;
 		const lider = data.candidatos && data.candidatos[ posicao ];
+		syncSelo( widget, data );
+		// No 2º turno há menos candidatos que no 1º: o card de uma posição que deixou de existir some, e volta se existir de novo.
+		if ( posicao > 0 ) widget.hidden = ! lider;
 
 		const pctEl = widget.querySelector( '.tse-card-pct' );
 		if ( pctEl && data.pct_apurado ) pctEl.textContent = data.pct_apurado + ' apurado';
@@ -116,6 +182,9 @@
 			content.appendChild( list );
 		}
 
+		syncSelo( widget, data );
+		syncSeletor( widget, data );
+
         // Atualiza % apurado
         const fillEl    = widget.querySelector( '.tse-apurado-fill' );
         const labelEl   = widget.querySelector( '.tse-apurado-label' );
@@ -161,6 +230,10 @@
                 proximaEl.hidden = true; // apuracao totalizada: nao ha proxima coleta
             }
         }
+
+		// Quem não consta no turno exibido (os finalistas do 2º turno, por exemplo) sai da lista.
+		const presentes = new Set( data.candidatos.map( c => String( c.numero ) ) );
+		widget.querySelectorAll( '.tse-candidato' ).forEach( li => { if ( ! presentes.has( li.dataset.numero ) ) li.remove(); } );
 
         // Calcula max votos para escalar barras
         const votos = data.candidatos.map( c => c.votos );

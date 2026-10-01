@@ -23,3 +23,5 @@
 .ae-strip-nav button:hover:not(:disabled),.ae-strip-nav button:focus-visible{border-color:var(--ae-strip-accent)}
 .ae-strip-nav button:disabled{opacity:.35;cursor:default}
 @media(max-width:760px){.ae-strip{flex-direction:column;align-items:stretch;gap:14px;padding:16px}.ae-strip-head{max-width:none}.ae-strip-nav{display:none}}
+.ae-strip-turno{display:inline-block;margin:0 0 8px;padding:2px 9px;background:var(--ae-strip-accent);color:var(--ae-strip-bg);font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.ae-strip-turno[hidden],.ae-strip .ae-candidate-item[hidden]{display:none}

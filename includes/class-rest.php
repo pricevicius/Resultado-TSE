@@ -6,7 +6,7 @@ final class AE_REST {
 	public static function instance(): AE_REST { return self::$instance ??= new self(); }
 
 	public function register_routes(): void {
-		register_rest_route( 'apuracao/v1', '/results/(?P<election>[a-z0-9-]+)/(?P<round>\d+)/(?P<position>[A-Za-z0-9_-]+)/(?P<scope>[A-Za-z0-9_-]+)', array( 'methods' => WP_REST_Server::READABLE, 'callback' => array( $this, 'results' ), 'permission_callback' => '__return_true', 'args' => array( 'round' => array( 'validate_callback' => static fn( $v ) => absint( $v ) > 0 ) ) ) );
+		register_rest_route( 'apuracao/v1', '/results/(?P<election>[a-z0-9-]+)/(?P<round>\d+|auto)/(?P<position>[A-Za-z0-9_-]+)/(?P<scope>[A-Za-z0-9_-]+)', array( 'methods' => WP_REST_Server::READABLE, 'callback' => array( $this, 'results' ), 'permission_callback' => '__return_true', 'args' => array( 'round' => array( 'validate_callback' => static fn( $v ) => 'auto' === $v || absint( $v ) > 0 ) ) ) );
 		register_rest_route( 'apuracao/v1', '/candidates/(?P<election>[a-z0-9-]+)/(?P<candidate>[A-Za-z0-9_-]+)', array( 'methods' => WP_REST_Server::READABLE, 'callback' => array( $this, 'candidate' ), 'permission_callback' => '__return_true' ) );
 		register_rest_route( 'apuracao/v1', '/admin/jobs', array( 'methods' => WP_REST_Server::CREATABLE, 'callback' => array( $this, 'enqueue' ), 'permission_callback' => static fn() => current_user_can( 'manage_options' ) ) );
 		register_rest_route( 'apuracao/v1', '/admin/elections', array( 'methods' => WP_REST_Server::CREATABLE, 'callback' => array( $this, 'save_election' ), 'permission_callback' => static fn() => current_user_can( 'manage_options' ) ) );
@@ -19,8 +19,14 @@ final class AE_REST {
 		add_action( 'shutdown', static function (): void {
 			try { AE_Job_Runner::instance()->kick(); } catch ( Throwable $e ) { /* Best-effort; the scheduled tick still covers this. */ }
 		} );
-		$data = AE_Results::instance()->latest( sanitize_title( $request['election'] ), absint( $request['round'] ), sanitize_key( $request['position'] ), sanitize_key( $request['scope'] ) );
+		$position = sanitize_key( $request['position'] ); $scope = sanitize_key( $request['scope'] );
+		$election = sanitize_title( $request['election'] ); $round = absint( $request['round'] );
+		// round "auto" = turno em andamento da disputa (AE_Rounds); a eleição da URL só vale quando o turno é explícito.
+		$rounds = AE_Rounds::resolve( $position, $scope );
+		if ( 'auto' === $request['round'] ) { $round = $rounds['round']; $election = $rounds['slug'] ?: $election; }
+		$data = AE_Results::instance()->latest( $election, $round, $position, $scope );
 		if ( null === $data ) { return new WP_REST_Response( array( 'code' => 'ae_contest_not_found', 'message' => 'Disputa nao encontrada.' ), 404 ); }
+		$data['rounds'] = $rounds['rounds'];
 		// Sinalizador explicito para consumidores externos nao precisarem interpretar o texto livre de 'situation'.
 		$data['candidates'] = array_map( static function ( array $candidate ): array {
 			$candidate['segundo_turno'] = false !== mb_stripos( (string) ( $candidate['situation'] ?? '' ), 'turno' );

@@ -22,14 +22,32 @@
 		update();
 	}
 	function fmt( n, d ) { return Number( n ).toLocaleString( 'pt-BR', { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 } ); }
+	// Faixas iguais na página pedem a mesma URL: a resposta é compartilhada por alguns segundos (uma requisição, não uma por faixa).
+	var recent = {};
+	function cached( url ) {
+		var hit = recent[ url ];
+		if ( hit && Date.now() - hit.t < 5000 ) { return hit.p; }
+		var p = fetch( url ).then( function ( r ) { return r.ok ? r.json() : Promise.reject(); } );
+		recent[ url ] = { t: Date.now(), p: p };
+		p.catch( function () { delete recent[ url ]; } );
+		return p;
+	}
 	function live( strip ) {
 		var url = strip.getAttribute( 'data-live' );
 		var list = strip.querySelector( '.ae-candidate-list' );
 		if ( ! url || ! list || ! window.fetch ) { return; }
 		function refresh() {
-			fetch( url ).then( function ( r ) { return r.ok ? r.json() : Promise.reject(); } ).then( function ( data ) {
+			cached( url ).then( function ( data ) {
 				var byId = {};
 				( data.candidates || [] ).forEach( function ( c ) { byId[ c.external_candidate_id ] = c; } );
+				// Turno em andamento (a REST usa "auto"): no 2º turno só ficam os finalistas e o cabeçalho avisa "2º turno".
+				var round = ( data.contest && parseInt( data.contest.round, 10 ) ) || 1;
+				var selo = strip.querySelector( '.ae-strip-turno' );
+				if ( selo ) { selo.textContent = round > 1 ? round + 'º turno' : ''; selo.hidden = round <= 1; }
+				strip.setAttribute( 'data-turno', round );
+				Array.prototype.forEach.call( list.querySelectorAll( '.ae-candidate-item' ), function ( li ) {
+					li.hidden = round > 1 && ! byId[ li.getAttribute( 'data-id' ) ];
+				} );
 				Array.prototype.forEach.call( list.querySelectorAll( '.ae-candidate-item' ), function ( li ) {
 					var c = byId[ li.getAttribute( 'data-id' ) ];
 					var el = li.querySelector( '.ae-candidate-votes' );

@@ -201,6 +201,38 @@ try {
 	$_GET['ae_candidato'] = '5001';
 	$profile = do_shortcode( '[apuracao_candidatos]' );
 	unset( $_GET['ae_candidato'] );
+	// Turno automático (AE_Rounds): o 2º turno só entra quando tem snapshot com apuração iniciada.
+	$resolve = static function () use ( $year ): array { AE_Rounds::flush(); return AE_Rounds::resolve( '0003', 'ZY', $year ); };
+	$r = $resolve();
+	$check( 'turno auto: com o 2º turno coletado (apuração iniciada) vira o 2º turno e o 1º segue disponível', 2 === $r['round'] && array( 1, 2 ) === $r['rounds'], wp_json_encode( $r ) );
+	$wpdb->query( "UPDATE {$p}snapshots SET totals_json=JSON_SET(totals_json,'$.progress','not_started') WHERE contest_id={$cid2}" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	$r = $resolve();
+	$check( 'turno auto: 2º turno só com snapshot zerado (not_started) NÃO vira o turno em andamento', 1 === $r['round'] && array( 1 ) === $r['rounds'], wp_json_encode( $r ) );
+	$zero = TSE_Shortcode::snapshot_resultado( 'governador', 'zy', 0 );
+	$check( 'turno auto: o widget segue no 1º turno enquanto o 2º não começou', '1' === $zero['turno'] && array( 1 ) === $zero['turnos'], wp_json_encode( array( $zero['turno'], $zero['turnos'] ) ) );
+	$wpdb->query( "UPDATE {$p}snapshots SET totals_json=JSON_SET(totals_json,'$.progress','partial') WHERE contest_id={$cid2}" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	AE_Rounds::flush(); // o resolvedor guarda o resultado por requisição; o teste muda o banco no meio
+	$live2 = TSE_Shortcode::snapshot_resultado( 'governador', 'zy', 0 );
+	$fix1  = TSE_Shortcode::snapshot_resultado( 'governador', 'zy', 1 );
+	$check( 'turno auto: com o 2º turno em andamento o widget devolve o 2º turno, com os dois turnos listados', '2' === $live2['turno'] && array( 1, 2 ) === $live2['turnos'] && true === $live2['turno_automatico'], wp_json_encode( array( $live2['turno'], $live2['turnos'] ) ) );
+	$check( 'turno fixo 1 continua devolvendo o 1º turno mesmo com o 2º em andamento', '1' === $fix1['turno'] && false === $fix1['turno_automatico'] );
+	$restreq = new WP_REST_Request( 'GET', '/apuracao/v1/results/ae-test-collect/auto/0003/ZY' );
+	foreach ( array( 'election' => 'ae-test-collect', 'round' => 'auto', 'position' => '0003', 'scope' => 'ZY' ) as $k => $v ) { $restreq->set_param( $k, $v ); }
+	$resp = AE_REST::instance()->results( $restreq ); $rd = $resp->get_data();
+	$check( 'REST round=auto: devolve o turno em andamento e a lista de turnos', 200 === $resp->get_status() && 2 === $rd['contest']['round'] && array( 1, 2 ) === $rd['rounds'], wp_json_encode( array( $resp->get_status(), $rd['contest']['round'] ?? null, $rd['rounds'] ?? null ) ) );
+	$_GET['ae_turno'] = '1';
+	$by_url = do_shortcode( '[tse_apuracao cargo="governador" uf="zy"]' );
+	$_GET['ae_turno'] = '3';
+	$bad_url = do_shortcode( '[tse_apuracao cargo="governador" uf="zy"]' );
+	unset( $_GET['ae_turno'] );
+	$auto_html = do_shortcode( '[tse_apuracao cargo="governador" uf="zy"]' );
+	$check( 'shortcode: ?ae_turno=1 abre o 1º turno do bloco; turno inexistente é ignorado', false !== strpos( $by_url, 'data-turno-atual="1"' ) && false !== strpos( $bad_url, 'data-turno-atual="2"' ) && false !== strpos( $auto_html, 'data-turno="auto"' ) );
+	$check( 'shortcode: seletor de turno aparece quando há os dois turnos, com o selo "2º turno"', false !== strpos( $auto_html, 'data-turno-sel="1"' ) && false !== strpos( $auto_html, 'data-turno-sel="2"' ) && false !== strpos( $auto_html, '2º turno</span>' ) );
+	$strip = do_shortcode( '[apuracao_candidatos_lista cargo="governador" uf="zy" mostrar="percentual"]' );
+	$check( 'faixa: no 2º turno mostra o selo "2º turno" e atualiza pela REST em "auto"', false !== strpos( $strip, 'ae-strip-turno' ) && false !== strpos( $strip, '/auto/0003/ZY' ) && false !== strpos( $strip, 'data-turno="2"' ), $strip );
+	$two = do_shortcode( '[tse_apuracao cargo="governador" uf="zy"][tse_apuracao cargo="governador" uf="zy"]' );
+	preg_match_all( '/ id="(tse-[^"]+)"/', $two, $ids );
+	$check( 'dois shortcodes iguais na página têm ids distintos', 2 === count( $ids[1] ) && 2 === count( array_unique( $ids[1] ) ), wp_json_encode( $ids[1] ) );
 	$check( 'A9: o perfil do candidato mostra "1º e 2º turno"', false !== strpos( $profile, 'Turnos disputados' ) && false !== strpos( $profile, '1º e 2º turno' ) );
 	// A tabela de vínculos existe e a migração é idempotente.
 	AE_Schema::install();

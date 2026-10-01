@@ -239,9 +239,22 @@ O shortcode `[tse_apuracao]` e o bloco usam snapshots locais. O JavaScript faz p
 
 APIs:
 
-- `GET /wp-json/apuracao/v1/results/{eleicao}/{turno}/{cargo}/{abrangencia}`
+- `GET /wp-json/apuracao/v1/results/{eleicao}/{turno}/{cargo}/{abrangencia}` (`{turno}` aceita `auto`: o turno em andamento da disputa; a resposta traz `rounds`, os turnos já com apuração)
 - `GET /wp-json/apuracao/v1/candidates/{eleicao}/{id-externo}`
 - compatibilidade: `GET /wp-json/tse/v1/resultado?cargo=governador&uf=es&turno=1`
+
+### Turno automático (2.7.0)
+
+Todos os widgets usam `turno="auto"` por padrão. `AE_Rounds::resolve()` (`includes/class-rounds.php`) decide o turno **por disputa**
+(cargo + UF): fica no 1º até o 2º ter um snapshot válido com `progress` diferente de `not_started` (o EA11 divulga a disputa do
+2º turno dias antes e a coleta pode gravar um snapshot zerado). Depois que o 2º entra, não volta. O resultado é guardado por
+requisição. `TSE_Shortcode::snapshot_resultado()` aceita turno `0` (auto) e devolve `turno`, `turnos` e `turno_automatico`; a REST
+legada usa `turno=0` por padrão. O JS (`tse-live.js`, `tse-resumo.js`, `ae-candidate-strip.js`) percebe a virada no polling e troca
+o bloco sem recarregar: selo "2º turno", saem os candidatos que não disputam, o card de uma posição que sumiu fica oculto, e o
+`[tse_apuracao]` ganha um seletor de turno **por bloco** (link real `?ae_turno=`, que só vale para blocos automáticos cuja disputa
+tem aquele turno). A faixa `[apuracao_candidatos_lista]` de uma disputa só consulta os candidatos da disputa do turno via
+`ae_candidate_contests` (os finalistas no 2º turno). Blocos iguais na mesma página compartilham a requisição por 5 s e não
+conflitam (ids únicos, estado só no próprio elemento). Teste no navegador: `tests/e2e/turno-browser.js`.
 
 ### `[tse_apuracao_resumo]` — widget simples para a home (2.5.0)
 

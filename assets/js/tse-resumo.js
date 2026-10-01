@@ -32,13 +32,17 @@
 
 	function applyRow( item, data ) {
 		const candidatos = data.candidatos || [];
+		const turno = parseInt( data.turno, 10 ) || 1;
+		const selo = item.querySelector( '.tse-turno-selo' );
+		if ( selo ) { selo.textContent = turno > 1 ? turno + 'º turno' : ''; selo.hidden = turno <= 1; }
 		item.dataset.status = data.status || '';
 		item.dataset.atrasado = data.atrasado ? '1' : '';
 		if ( ! candidatos.length ) return;
 		if ( item.querySelector( '.tse-resumo-aguardando' ) ) { window.location.reload(); return; } // primeira vez que chega dado: o markup é outro
 		const itens = Array.from( item.querySelectorAll( '.tse-resumo-cand' ) );
 		if ( candidatos.length > itens.length ) { window.location.reload(); return; } // entrou candidato novo: o markup mudou
-		itens.forEach( ( li, i ) => { if ( candidatos[ i ] ) applyCand( li, candidatos[ i ] ); } );
+		// No 2º turno há menos candidatos: as linhas que sobram ficam escondidas.
+		itens.forEach( ( li, i ) => { li.hidden = ! candidatos[ i ]; if ( candidatos[ i ] ) applyCand( li, candidatos[ i ] ); } );
 		setText( item, '.tse-resumo-apurado', ( data.pct_apurado || '0%' ) + ' apurado' );
 	}
 
@@ -58,9 +62,8 @@
 
 	function update( widget ) {
 		const jobs = Array.from( widget.querySelectorAll( '.tse-resumo-item' ) ).map( item => {
-			const url = `${ restUrl }?cargo=${ encodeURIComponent( item.dataset.cargo ) }&uf=${ encodeURIComponent( item.dataset.uf ) }&turno=${ item.dataset.turno || 1 }&limite=${ parseInt( item.dataset.limite, 10 ) || 1 }`;
-			return fetch( url, { headers: { 'X-WP-Nonce': nonce } } )
-				.then( r => r.ok ? r.json() : Promise.reject( r.status ) )
+			const url = `${ restUrl }?cargo=${ encodeURIComponent( item.dataset.cargo ) }&uf=${ encodeURIComponent( item.dataset.uf ) }&turno=${ ( item.dataset.turno || 'auto' ) === 'auto' ? 0 : item.dataset.turno }&limite=${ parseInt( item.dataset.limite, 10 ) || 1 }`;
+			return ( window.TSEGetJson ? window.TSEGetJson( url ) : fetch( url, { headers: { 'X-WP-Nonce': nonce } } ).then( r => r.ok ? r.json() : Promise.reject( r.status ) ) )
 				.then( data => applyRow( item, data ) )
 				.catch( () => {} ); // falha silenciosa: mantém o conteúdo anterior
 		} );

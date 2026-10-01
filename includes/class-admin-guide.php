@@ -51,7 +51,7 @@ final class AE_Admin_Guide {
 			<table class="widefat striped"><thead><tr><th>Atributo</th><th>O que faz</th><th>Padrão</th><th>Valores</th></tr></thead><tbody>
 				<tr><td><code>cargo</code></td><td>Qual cargo mostrar</td><td><code>presidente</code></td><td>veja a tabela de cargos abaixo</td></tr>
 				<tr><td><code>uf</code></td><td>Abrangência da disputa</td><td><code>br</code></td><td><code>br</code> (nacional, Presidente) ou a sigla do estado em minúsculas: <code>sp</code>, <code>rj</code>, <code>es</code>…</td></tr>
-				<tr><td><code>turno</code></td><td>Turno</td><td><code>1</code></td><td><code>1</code> ou <code>2</code></td></tr>
+				<tr><td><code>turno</code></td><td>Turno. <code>auto</code> segue o turno em andamento da disputa: fica no 1º turno até o 2º começar a apurar e então troca sozinho, sem recarregar a página, com o selo "2º turno" e (na apuração completa) um seletor de turno</td><td><code>auto</code></td><td><code>auto</code>, <code>1</code> ou <code>2</code> (1 e 2 fixam o turno). <code>?ae_turno=1</code> ou <code>2</code> na URL abre um bloco automático naquele turno, se a disputa o tiver</td></tr>
 				<tr><td><code>limite</code></td><td>Quantos candidatos listar</td><td><code>10</code></td><td>número a partir de 1 (os primeiros colocados)</td></tr>
 				<tr><td><code>atualizar</code></td><td>De quantos em quantos segundos a página busca dado novo</td><td><code>60</code></td><td>segundos; <code>0</code> desliga a atualização automática</td></tr>
 				<tr><td><code>titulo</code></td><td>Título acima do placar</td><td>montado pelo cargo e UF</td><td>texto livre (também aceita <code>title</code>)</td></tr>
@@ -70,7 +70,7 @@ final class AE_Admin_Guide {
 			<h2><code>[tse_apuracao_resumo]</code> — widget simples para a home</h2>
 			<p>Uma caixa única com <strong>um bloco por disputa</strong>: cargo e UF, os primeiros colocados (3 por padrão) com partido, o percentual e quanto já foi apurado, mais um selo geral (<em>Ao vivo</em>, <em>Apuração concluída</em> ou <em>Dados atrasados</em>) e um link opcional para a página completa. Atualiza sozinho. É o mais indicado para a home, a barra lateral e matérias; para destacar uma disputa só, use o card abaixo.</p>
 			<table class="widefat striped"><thead><tr><th>Atributo</th><th>O que faz</th><th>Padrão</th><th>Valores</th></tr></thead><tbody>
-				<tr><td><code>disputas</code></td><td>Quais disputas listar, separadas por vírgula, cada uma no formato <code>cargo:uf</code> (ou <code>cargo:uf:turno</code>)</td><td>Presidente, e Governador e Senador da UF deste site</td><td>até 8 disputas; cargos da tabela abaixo; <code>uf</code> em minúsculas (<code>br</code> para Presidente); turno <code>1</code> ou <code>2</code></td></tr>
+				<tr><td><code>disputas</code></td><td>Quais disputas listar, separadas por vírgula, cada uma no formato <code>cargo:uf</code> (ou <code>cargo:uf:turno</code>; sem turno vale <code>auto</code>)</td><td>Presidente, e Governador e Senador da UF deste site</td><td>até 8 disputas; cargos da tabela abaixo; <code>uf</code> em minúsculas (<code>br</code> para Presidente); turno <code>auto</code> (padrão), <code>1</code> ou <code>2</code></td></tr>
 				<tr><td><code>limite</code></td><td>Quantos candidatos mostrar em cada disputa</td><td><code>3</code></td><td>de 1 a 10; <code>1</code> = só o líder</td></tr>
 				<tr><td><code>titulo</code></td><td>Título da caixa</td><td><code>Apuração</code></td><td>texto livre</td></tr>
 				<tr><td><code>link</code></td><td>Endereço da página de apuração completa (mostra o link no rodapé)</td><td>sem link</td><td>URL, por exemplo <code>/apuracao/</code></td></tr>
@@ -91,7 +91,7 @@ final class AE_Admin_Guide {
 			<h2><code>[tse_apuracao_card]</code> — card compacto</h2>
 			<p>Versão enxuta para a home e para grades: por padrão mostra só o líder da disputa. Pode ser repetido quantas vezes quiser, um por disputa.</p>
 			<table class="widefat striped"><thead><tr><th>Atributo</th><th>O que faz</th><th>Padrão</th><th>Valores</th></tr></thead><tbody>
-				<tr><td><code>cargo</code>, <code>uf</code>, <code>turno</code></td><td>Mesmos do <code>[tse_apuracao]</code></td><td><code>presidente</code>, <code>br</code>, <code>1</code></td><td>iguais aos acima</td></tr>
+				<tr><td><code>cargo</code>, <code>uf</code>, <code>turno</code></td><td>Mesmos do <code>[tse_apuracao]</code></td><td><code>presidente</code>, <code>br</code>, <code>auto</code></td><td>iguais aos acima</td></tr>
 				<tr><td><code>limite</code></td><td>Quantos colocados mostrar</td><td><code>1</code></td><td><code>1</code> = card grande só com o líder; mais que 1 = mini-lista</td></tr>
 				<tr><td><code>atualizar</code></td><td>Segundos entre atualizações</td><td><code>60</code></td><td><code>0</code> desliga</td></tr>
 				<tr><td><code>titulo</code></td><td>Título do card</td><td>montado pelo cargo e UF</td><td>texto livre (também aceita <code>title</code>)</td></tr>
