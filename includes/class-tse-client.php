@@ -93,12 +93,22 @@ final class AE_TSE_Client {
 		$previous = $wpdb->get_var( $wpdb->prepare( "SELECT source_sha256 FROM {$p}snapshots WHERE contest_id=%d AND status='valid' ORDER BY id DESC LIMIT 1", $contest_id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		if ( hash_equals( (string) $previous, $sha ) ) { return array( 'complete' => true, 'unchanged' => true ); }
 		$sequence = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COALESCE(MAX(sequence_no),0)+1 FROM {$p}snapshots WHERE contest_id=%d", $contest_id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$wpdb->insert( $p . 'snapshots', array( 'contest_id' => $contest_id, 'source' => $kind, 'source_url' => $url, 'source_sha256' => $sha, 'captured_at' => $now, 'generated_at' => $normalized['generated_at'], 'sequence_no' => $sequence, 'status' => 'valid', 'totals_json' => wp_json_encode( $normalized['totals'] ), 'raw_json' => wp_json_encode( $raw ), 'valid_until' => gmdate( 'Y-m-d H:i:s', time() + 3600 ) ), array( '%d','%s','%s','%s','%s','%s','%d','%s','%s','%s','%s' ) );
-		$snapshot_id = (int) $wpdb->insert_id;
-		foreach ( $normalized['candidates'] as $candidate ) {
-			$candidate_id = $this->upsert_result_candidate( $contest_id, $candidate, $url );
-			// Nome/partido gravados aqui tambem (nao so via candidate_id) pra sobreviver mesmo se o cadastro em ae_candidates ainda nao existir ou for reimportado depois.
-			$wpdb->insert( $p . 'result_rows', array( 'snapshot_id' => $snapshot_id, 'candidate_id' => $candidate_id ? (int) $candidate_id : null, 'external_candidate_id' => $candidate['external_id'], 'rank_no' => $candidate['rank'], 'votes' => $candidate['votes'], 'percentage' => $candidate['percentage'], 'elected' => $candidate['elected'], 'situation' => $candidate['situation'], 'ballot_name' => $candidate['ballot_name'], 'full_name' => $candidate['full_name'], 'ballot_number' => $candidate['ballot_number'], 'party' => $candidate['party'] ), array( '%d','%d','%s','%d','%d','%f','%d','%s','%s','%s','%s','%s' ) );
+		// Snapshot e linhas na mesma transação: sem isso, um processo interrompido no meio deixava um snapshot
+		// 'valid' com ranking parcial sendo servido. Exige tabelas InnoDB (padrão do MySQL/MariaDB atuais).
+		$wpdb->query( 'START TRANSACTION' );
+		try {
+			$inserted = $wpdb->insert( $p . 'snapshots', array( 'contest_id' => $contest_id, 'source' => $kind, 'source_url' => $url, 'source_sha256' => $sha, 'captured_at' => $now, 'generated_at' => $normalized['generated_at'], 'sequence_no' => $sequence, 'status' => 'valid', 'totals_json' => wp_json_encode( $normalized['totals'] ), 'raw_json' => wp_json_encode( $raw ), 'valid_until' => gmdate( 'Y-m-d H:i:s', time() + 3600 ) ), array( '%d','%s','%s','%s','%s','%s','%d','%s','%s','%s','%s' ) );
+			if ( false === $inserted ) { throw new RuntimeException( 'Falha ao gravar o snapshot.' ); }
+			$snapshot_id = (int) $wpdb->insert_id;
+			foreach ( $normalized['candidates'] as $candidate ) {
+				$candidate_id = $this->upsert_result_candidate( $contest_id, $candidate, $url );
+				// Nome/partido gravados aqui tambem (nao so via candidate_id) pra sobreviver mesmo se o cadastro em ae_candidates ainda nao existir ou for reimportado depois.
+				if ( false === $wpdb->insert( $p . 'result_rows', array( 'snapshot_id' => $snapshot_id, 'candidate_id' => $candidate_id ? (int) $candidate_id : null, 'external_candidate_id' => $candidate['external_id'], 'rank_no' => $candidate['rank'], 'votes' => $candidate['votes'], 'percentage' => $candidate['percentage'], 'elected' => $candidate['elected'], 'situation' => $candidate['situation'], 'ballot_name' => $candidate['ballot_name'], 'full_name' => $candidate['full_name'], 'ballot_number' => $candidate['ballot_number'], 'party' => $candidate['party'] ), array( '%d','%d','%s','%d','%d','%f','%d','%s','%s','%s','%s','%s' ) ) ) { throw new RuntimeException( 'Falha ao gravar o ranking do snapshot.' ); }
+			}
+			$wpdb->query( 'COMMIT' );
+		} catch ( Throwable $e ) {
+			$wpdb->query( 'ROLLBACK' );
+			throw $e;
 		}
 		AE_Results::instance()->invalidate( $snapshot_id );
 		AE_Logger::write( 'info', 'snapshot_valid', array( 'contest_id' => $contest_id, 'snapshot_id' => $snapshot_id, 'sha256' => $sha ) );
