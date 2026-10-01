@@ -30,7 +30,7 @@ final class AE_Job_Runner {
 	}
 
 	/**
-	 * Estado do disparo do worker, para a tela de saúde, a REST e o alerta do Slack.
+	 * Estado do disparo do worker, para a tela de saúde e a REST de saúde.
 	 *
 	 * Dois sinais separados de propósito: o WP-Cron por tráfego mantém "algum tick" fresco
 	 * mesmo quando o cron de sistema (bin/tse-tick-loop.sh) morreu em silêncio, e é justamente

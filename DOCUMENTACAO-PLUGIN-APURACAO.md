@@ -668,9 +668,9 @@ saúde só mostrava o "próximo ciclo" do WP-Cron, que continuava aparecendo com
 - **Visão geral:** linha "Último tick" (com a origem: cron do sistema ou WP-Cron) e avisos
   no topo — vermelho para coleta parada, amarelo para cron de sistema parado, nota para
   "cron de sistema não detectado". Nada aparece se não houver disputa ligada.
-- **REST** `apuracao/v1/admin/health`: novo campo `tick`.
-- **Slack** (se o webhook estiver configurado): `stale` e `cli_stopped` entram no alerta
-  imediato, e o snapshot de 15 min mostra a idade do último tick.
+- **REST** `apuracao/v1/admin/health`: novo campo `tick`. O plugin **não se comunica com
+  Slack nem com nenhum serviço de alerta**: quem quiser alerta externo consome esse
+  endpoint (com usuário `manage_options`) e decide o que fazer.
 - **`bin/tse-tick-loop.sh`:** sem container configurado e sem `php` no host, ou com
   container configurado e sem `docker`, o script grava a mensagem no log, escreve em
   stderr e sai com código 1, em vez de falhar a cada 15 s sem aviso. Cada falha de tick
