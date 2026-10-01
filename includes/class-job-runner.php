@@ -178,21 +178,29 @@ final class AE_Job_Runner {
 	private function enqueue_due_collections(): void {
 		global $wpdb;
 		$p = $wpdb->prefix . 'ae_';
-		$contests = $wpdb->get_results( "SELECT id,config_json FROM {$p}contests WHERE active=1 AND config_json IS NOT NULL" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$contests = $wpdb->get_results( "SELECT id,position_code,scope_code,config_json FROM {$p}contests WHERE active=1 AND config_json IS NOT NULL" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$multi_uf = AE_Collection_Policy::count_enabled_ufs( $contests ) > 1;
+		// Leves (Presidente, Governador, Senador) entram na fila antes das pesadas (Deputados): a fila atende por run_after e id.
+		usort( $contests, static function ( $a, $b ) {
+			$weight = (int) AE_Collection_Policy::is_heavy( (string) $a->position_code ) - (int) AE_Collection_Policy::is_heavy( (string) $b->position_code );
+			return 0 !== $weight ? $weight : (int) $a->id - (int) $b->id;
+		} );
 		foreach ( $contests as $contest ) {
 			$config = json_decode( (string) $contest->config_json, true );
 			$collection = is_array( $config ) ? ( $config['collection'] ?? array() ) : array();
 			if ( empty( $collection['enabled'] ) || empty( $collection['source_url'] ) ) { continue; }
 			$next_attempt = strtotime( (string) ( $collection['next_attempt_at'] ?? '' ) . ' UTC' );
 			if ( $next_attempt && $next_attempt > time() ) { continue; }
-			$interval = max( 30, min( 900, absint( $collection['interval'] ?? 60 ) ) );
+			$interval = AE_Collection_Policy::clamp( absint( $collection['interval'] ?? AE_Collection_Policy::DEFAULT_INTERVAL ) );
 			$last = $wpdb->get_var( $wpdb->prepare( "SELECT MAX(captured_at) FROM {$p}snapshots WHERE contest_id=%d AND status='valid'", $contest->id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			if ( $last && strtotime( $last . ' UTC' ) > time() - $interval ) { continue; }
 			// The trailing "," or "}" stops "contest_id":1 from matching 10, 11, 100... which silently starves low-numbered contests forever.
 			$id = (int) $contest->id;
 			$pending = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$p}jobs WHERE type='collect_results' AND state IN ('queued','running','retry') AND (payload_json LIKE %s OR payload_json LIKE %s) LIMIT 1", '%"contest_id":' . $id . ',%', '%"contest_id":' . $id . '}%' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			if ( $pending ) { continue; }
-			self::enqueue( 'collect_results', array( 'contest_id' => (int) $contest->id, 'kind' => strtoupper( sanitize_key( $collection['kind'] ?? 'EA20' ) ), 'source_url' => esc_url_raw( $collection['source_url'] ) ) );
+			// Com mais de uma UF, a pesada espera alguns segundos: uma leve que vença logo depois ainda passa à frente dela.
+			$delay = $multi_uf && AE_Collection_Policy::is_heavy( (string) $contest->position_code ) ? AE_Collection_Policy::HEAVY_QUEUE_DELAY : 0;
+			self::enqueue( 'collect_results', array( 'contest_id' => (int) $contest->id, 'kind' => strtoupper( sanitize_key( $collection['kind'] ?? 'EA20' ) ), 'source_url' => esc_url_raw( $collection['source_url'] ) ), array(), $delay );
 		}
 	}
 
