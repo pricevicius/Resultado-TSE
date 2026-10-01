@@ -31,6 +31,8 @@ Planejado desde antes e ainda não feito (prioridade P2): fotos com cache própr
 
 Os testes de coleta foram verificados também no sentido contrário: tirando de propósito a proteção do 2º turno, o teste falha.
 
+**PHP 7.4:** a 2.5.0 foi executada na branch `php7.4` com PHP 7.4.33 e WordPress 6.1.1 em containers descartáveis (smoke do admin, `wp-integration` e `wp-collect`, 83 checks). Isso achou um bug real (shortcode sem atributos recebia `''` em WordPress antigo e dava `TypeError`), já corrigido. O teste do aviso de UF desligada é ignorado nesse ambiente por não haver disputas sincronizadas, e o `http-admin.sh` não foi rodado lá.
+
 **Ainda não exercitado:**
 - o comportamento do **TSE de verdade**: tempo de rede, bloqueio por IP, formato exato dos arquivos de hoje (não há mais simulado; o `tests/wp-collect.php` reproduz o formato documentado, não o tráfego real);
 - a importação do **ZIP** real: o container local não tem `php-zip`, então os testes usam CSV (mesmo caminho de leitura e marcação, sem a abertura do ZIP);
@@ -67,6 +69,8 @@ No projeto de origem (Tribuna Online), em 01/10/2026: os ponteiros dos submódul
 
 ## E. Como publicar e retomar
 
+**Versões de PHP:** `main` exige PHP 8.1+; `php7.4` exige 7.4+. **PHP 7.2 e 7.3 não são suportados**: o código usa propriedades tipadas, arrow functions (`fn`) e `??=`, do 7.4, e em 7.2 o plugin nem carrega (erro de sintaxe em 12 arquivos). Suportar 7.2 exigiria uma terceira branch, e o PHP 7.2 está sem suporte de segurança desde 2020.
+
 **Publicar uma mudança** (nas duas branches e nos dois remotes):
 
 ```bash
@@ -76,7 +80,7 @@ git checkout php7.4 && git cherry-pick <commit>   # conflito esperado só no cab
 docker run --rm -v "$PWD":/p php:7.4-cli sh -c 'for f in /p/includes/*.php /p/tse-apuracao.php; do php -l $f; done'
 docker run --rm -v "$PWD":/p php:8.2-cli sh -c 'for f in /p/includes/*.php /p/tse-apuracao.php; do php -l $f; done'
 git push origin main php7.4          # GitLab
-git push github main:master php7.4:php7.4   # GitHub
+git push github main:master php7.4:php7.4   # GitHub (o remote `github` não está configurado neste clone: adicione-o antes)
 ```
 
 Depois, em cada site que usa o plugin como submódulo, atualizar o ponteiro e conferir a versão na tela **Apuração**.
