@@ -24,7 +24,7 @@ final class AE_Admin {
 	public function page(): void {
 		$this->guard(); $tab = sanitize_key( $_GET['tab'] ?? 'overview' ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		if ( ! in_array( $tab, array( 'overview', 'setup', 'selecao', 'import', 'jobs', 'logs', 'shortcodes' ), true ) ) { $tab = 'overview'; }
-		?><div class="wrap ae-admin"><div class="ae-title"><div><h1>Apuração Eleitoral</h1><p>Configure, importe e acompanhe a apuração sem sair do WordPress.</p></div><span class="ae-version">v<?php echo esc_html( AE_VERSION ); ?></span></div><?php $this->notice(); ?><nav class="nav-tab-wrapper"><?php foreach ( array( 'overview'=>'Visão geral', 'setup'=>'Configuração', 'selecao'=>'Seleção de disputas', 'import'=>'Importar e coletar', 'jobs'=>'Fila e progresso', 'logs'=>'Logs', 'shortcodes'=>'Como usar' ) as $key=>$label ) : ?><a class="nav-tab <?php echo $tab === $key ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( $this->url( $key ) ); ?>"><?php echo esc_html( $label ); ?></a><?php endforeach; ?></nav><?php call_user_func( array( $this, 'tab_' . $tab ) ); ?></div><?php
+		?><div class="wrap ae-admin"><div class="ae-title"><div><h1>Apuração Eleitoral</h1><p>Configure, importe e acompanhe a apuração sem sair do WordPress.</p></div><span class="ae-version">v<?php echo esc_html( AE_VERSION ); ?></span></div><?php $this->notice(); $this->requirements_notice(); ?><nav class="nav-tab-wrapper"><?php foreach ( array( 'overview'=>'Visão geral', 'setup'=>'Configuração', 'selecao'=>'Seleção de disputas', 'import'=>'Importar e coletar', 'jobs'=>'Fila e progresso', 'logs'=>'Logs', 'shortcodes'=>'Como usar' ) as $key=>$label ) : ?><a class="nav-tab <?php echo $tab === $key ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( $this->url( $key ) ); ?>"><?php echo esc_html( $label ); ?></a><?php endforeach; ?></nav><?php call_user_func( array( $this, 'tab_' . $tab ) ); ?></div><?php
 	}
 
 	private function tab_shortcodes(): void { AE_Admin_Guide::render( $this->url( 'selecao' ), $this->url( 'setup' ), $this->url( 'import' ) ); }
@@ -341,6 +341,13 @@ final class AE_Admin {
 		} elseif ( $tick['cli_never'] ) {
 			echo '<p class="description">Cron de sistema não detectado: a coleta depende do tráfego do site (WP-Cron). ' . esc_html( $how ) . '</p>';
 		}
+	}
+
+	/** Aviso permanente (todas as abas) quando falta um requisito de ambiente, por exemplo a extensão php-zip removida depois da ativação. */
+	private function requirements_notice(): void {
+		$missing = AE_Plugin::missing_requirements();
+		if ( ! $missing ) { return; }
+		echo '<div class="notice notice-error inline" style="border-left:4px solid #d63638;padding:1px 12px;margin:12px 0;"><p><strong>Requisito do servidor ausente:</strong> ' . esc_html( implode( '; ', $missing ) ) . '. Enquanto isso, a importação de candidatos não funciona.</p></div>';
 	}
 
 	/** Aviso quando as tabelas não são InnoDB: a transação do snapshot não protege nada nesse caso. */

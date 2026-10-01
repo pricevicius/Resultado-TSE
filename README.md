@@ -2,6 +2,15 @@
 
 Plugin WordPress para importar candidatos e publicar resultados eleitorais do TSE a partir de snapshots locais auditáveis.
 
+## Requisitos
+
+- **PHP** 8.1+ (`main`), 7.4+ (branch `php7.4`) ou 7.2+ com WordPress 4.9+ (branch `php7.2`, release `*-php7.2`);
+- **extensão PHP `zip`** (classe `ZipArchive`): **obrigatória**. O plugin recusa a ativação, com uma mensagem na tela, se ela não estiver instalada, e mostra um aviso permanente no admin se ela sumir depois. É ela que abre o pacote ZIP de candidatos dos Dados Abertos do TSE. Em Debian/Ubuntu: `apt install php-zip` (ou `php7.2-zip`, `php8.2-zip`… conforme a versão) e reinicie o PHP-FPM ou o Apache. Conferir: `php -m | grep -i zip`;
+- tabelas **InnoDB** (a Visão geral avisa se não forem);
+- saída HTTPS para `*.tse.jus.br`.
+
+Só para desenvolvimento ou teste sem a extensão, defina `define( 'TSE_APURACAO_ALLOW_NO_ZIP', true );` no `wp-config.php` (a importação do ZIP continuará sem funcionar). Não use em produção.
+
 ## Instalação e uso
 
 1. Instale e ative a pasta em `wp-content/plugins/tse-apuracao`.
