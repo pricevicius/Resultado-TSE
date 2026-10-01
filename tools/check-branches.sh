@@ -13,9 +13,15 @@ fail=0
 bad() { echo "FALHA: $1" >&2; fail=1; }
 TMP=$(mktemp -d); trap 'git worktree prune; rm -rf "$TMP"' EXIT
 
-# 1) commits da main que faltam na php7.4 (git cherry marca com "+" o que não tem equivalente)
-missing=$(git cherry php7.4 main | grep '^+' | wc -l | tr -d ' ')
-[ "$missing" = 0 ] && echo "ok   php7.4 contém todos os commits da main" || bad "$missing commit(s) da main sem equivalente na php7.4 (git cherry php7.4 main)"
+# 1) commits da main que faltam na php7.4. Compara pelo assunto (o cherry-pick com conflito de cabeçalho muda o patch-id,
+#    então git cherry daria falso alarme). Só olha os commits que a php7.4 ainda não alcança pela história comum.
+base=$(git merge-base main php7.4)
+missing=0
+for subject in $(git log --format=%H "$base"..main | while read h; do git log -1 --format=%s "$h" | tr ' ' '_'; done); do
+	s=$(echo "$subject" | tr '_' ' ')
+	git log --format=%s "$base"..php7.4 | grep -qxF "$s" || { echo "  falta na php7.4: $s" >&2; missing=$((missing + 1)); }
+done
+[ "$missing" = 0 ] && echo "ok   php7.4 contém todos os commits da main (por assunto)" || bad "$missing commit(s) da main sem equivalente na php7.4"
 
 # 2) php7.2 == port(php7.4)
 git worktree add -q --detach "$TMP/gen" php7.4
