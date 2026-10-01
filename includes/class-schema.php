@@ -153,7 +153,7 @@ final class AE_Schema {
 		);
 		foreach ( $queries as $query ) { dbDelta( $query ); }
 		$required = array( 'elections', 'contests', 'candidates', 'snapshots', 'result_rows', 'jobs', 'logs' );
-		$missing = array_filter( $required, static fn( string $table ): bool => $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $p . $table ) ) !== $p . $table );
+		$missing = array_filter( $required, static function ( string $table ) use ( $wpdb, $p ): bool { return $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $p . $table ) ) !== $p . $table; });
 		if ( $missing ) {
 			delete_option( 'ae_schema_version' );
 			error_log( 'Apuracao Eleitoral: tabelas nao criadas: ' . implode( ', ', $missing ) ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log

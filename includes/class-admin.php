@@ -2,9 +2,9 @@
 defined( 'ABSPATH' ) || exit;
 
 final class AE_Admin {
-	private static ?AE_Admin $instance = null;
+	private static $instance = null;
 	private const PAGE = 'apuracao-eleitoral';
-	public static function instance(): AE_Admin { return self::$instance ??= new self(); }
+	public static function instance(): AE_Admin { if ( null === self::$instance ) { self::$instance = new self(); } return self::$instance; }
 
 	public function register(): void {
 		add_action( 'admin_menu', array( $this, 'menu' ) );
@@ -391,7 +391,7 @@ final class AE_Admin {
 		$last = get_option( 'ae_last_import', array() ); $last = is_array( $last ) ? $last : array();
 		$auto = absint( get_option( 'ae_auto_import_election', 0 ) );
 		$removed = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}ae_candidates WHERE removed_at IS NOT NULL" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$utc = static fn( string $mysql ): string => '' === $mysql ? '—' : (string) get_date_from_gmt( $mysql, 'd/m/Y H:i' );
+		$utc = static function ( string $mysql ): string { return '' === $mysql ? '—' : (string) get_date_from_gmt( $mysql, 'd/m/Y H:i' ); };
 		?><section class="ae-panel"><h2>Última importação de candidatos</h2>
 		<?php if ( ! $last ) : ?><p>Nenhuma importação concluída ainda.</p><?php else : ?>
 		<dl class="ae-health"><dt>Concluída em</dt><dd><?php echo esc_html( $utc( (string) ( $last['finished_at'] ?? '' ) ) ); ?></dd><dt>CSV gerado pelo TSE em</dt><dd><?php echo esc_html( ! empty( $last['csv_generated_at'] ) ? date_i18n( 'd/m/Y H:i', strtotime( (string) $last['csv_generated_at'] . ' UTC' ) ) . ' (Brasília)' : 'não informado' ); ?></dd><dt>Linhas importadas</dt><dd><?php echo esc_html( number_format_i18n( (int) ( $last['rows'] ?? 0 ) ) ); ?></dd><dt>Escopo</dt><dd><?php echo esc_html( ! empty( $last['ufs'] ) ? implode( ', ', (array) $last['ufs'] ) : 'Brasil inteiro' ); ?></dd></dl>
@@ -419,7 +419,7 @@ final class AE_Admin {
 	public function ajax_status(): void { $this->guard();check_ajax_referer('ae_admin_status','nonce');global $wpdb;$table=$wpdb->prefix.'ae_jobs';$states=$wpdb->get_results("SELECT state,COUNT(*) total FROM {$table} GROUP BY state",OBJECT_K); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$state=sanitize_key($_POST['state']??'');if(!in_array($state,array('','queued','running','retry','completed','failed'),true))$state='';
 		$days=absint($_POST['days']??0);
-		wp_send_json_success(array('summary'=>array_map(static fn($row)=>(int)$row->total,$states),'html'=>$this->jobs_html($state,$days))); }
+		wp_send_json_success(array('summary'=>array_map(static function ($row) { return (int)$row->total; },$states),'html'=>$this->jobs_html($state,$days))); }
 
 	private function jobs_html( string $state = '', int $days = 0 ): string {
 		global $wpdb; $table = $wpdb->prefix . 'ae_jobs';
