@@ -19,6 +19,7 @@ define( 'AE_FILE', __FILE__ );
 define( 'AE_DIR', TSE_APURACAO_DIR );
 define( 'AE_URL', TSE_APURACAO_URL );
 
+require_once TSE_APURACAO_DIR . 'includes/compat.php';
 require_once TSE_APURACAO_DIR . 'includes/class-tse-api.php';
 require_once TSE_APURACAO_DIR . 'includes/class-tse-settings.php';
 require_once TSE_APURACAO_DIR . 'includes/class-tse-shortcode.php';
