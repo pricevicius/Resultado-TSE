@@ -30,15 +30,41 @@ final class AE_TSE_Client {
 			if ( ! is_array( $row ) ) { continue; }
 			$external = sanitize_text_field( (string) ( $row['id'] ?? $row['SQ_CANDIDATO'] ?? $row['sq_CANDIDATO'] ?? '' ) );
 			if ( '' === $external ) { continue; }
-			$data = array( 'election_id' => $election_id, 'external_id' => $external, 'contest_id' => absint( $row['contest_id'] ?? 0 ) ?: null, 'ballot_name' => sanitize_text_field( $row['NM_URNA_CANDIDATO'] ?? $row['nm_URNA_CANDIDATO'] ?? $row['nomeUrna'] ?? '' ), 'full_name' => sanitize_text_field( $row['NM_CANDIDATO'] ?? $row['nm_CANDIDATO'] ?? $row['nomeCompleto'] ?? '' ), 'ballot_number' => sanitize_text_field( (string) ( $row['NR_CANDIDATO'] ?? $row['nr_CANDIDATO'] ?? $row['numero'] ?? '' ) ), 'party' => sanitize_text_field( $row['SG_PARTIDO'] ?? $row['sg_PARTIDO'] ?? $row['partido'] ?? '' ), 'situation' => AE_Candidate_Catalog::clean_value( sanitize_text_field( $row['DS_SITUACAO_CANDIDATURA'] ?? $row['ds_SITUACAO_CANDIDATURA'] ?? $row['situacao'] ?? '' ) ), 'photo_url' => esc_url_raw( $row['urlFoto'] ?? '' ), 'data_json' => wp_json_encode( $row ), 'updated_at' => $now );
+			$contest_id = absint( $row['contest_id'] ?? 0 ) ?: $this->contest_for_candidate_row( $election_id, $row );
+			$data = array( 'election_id' => $election_id, 'external_id' => $external, 'contest_id' => $contest_id ?: null, 'ballot_name' => sanitize_text_field( $row['NM_URNA_CANDIDATO'] ?? $row['nm_URNA_CANDIDATO'] ?? $row['nomeUrna'] ?? '' ), 'full_name' => sanitize_text_field( $row['NM_CANDIDATO'] ?? $row['nm_CANDIDATO'] ?? $row['nomeCompleto'] ?? '' ), 'ballot_number' => sanitize_text_field( (string) ( $row['NR_CANDIDATO'] ?? $row['nr_CANDIDATO'] ?? $row['numero'] ?? '' ) ), 'party' => sanitize_text_field( $row['SG_PARTIDO'] ?? $row['sg_PARTIDO'] ?? $row['partido'] ?? '' ), 'situation' => AE_Candidate_Catalog::clean_value( sanitize_text_field( $row['DS_SITUACAO_CANDIDATURA'] ?? $row['ds_SITUACAO_CANDIDATURA'] ?? $row['situacao'] ?? '' ) ), 'photo_url' => esc_url_raw( $row['urlFoto'] ?? '' ), 'data_json' => wp_json_encode( $row ), 'updated_at' => $now );
 			$existing = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$table} WHERE election_id=%d AND external_id=%s", $election_id, $external ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-			if ( $existing ) { unset( $data['election_id'], $data['external_id'] ); $wpdb->update( $table, $data, array( 'id' => (int) $existing ) ); }
+			// Sem disputa encontrada, não apaga o vínculo que o EA20 já tenha gravado.
+			if ( $existing ) { unset( $data['election_id'], $data['external_id'] ); if ( ! $contest_id ) { unset( $data['contest_id'] ); } $wpdb->update( $table, $data, array( 'id' => (int) $existing ) ); }
 			else { $wpdb->insert( $table, $data ); }
 		}
 		AE_Logger::write( 'info', 'candidate_import_page', array( 'job_id' => $job_id, 'offset' => $offset, 'count' => count( $batch ) ) );
 		$next_cursor = $batch_data['cursor'] ?? array( 'offset' => $offset + count( $batch ) );
 		if ( $complete ) { $this->cleanup_import_file( $job_id ); }
 		return array( 'complete' => $complete, 'cursor' => $next_cursor );
+	}
+
+	/** Cargos de titular do CSV de candidatos (CD_CARGO): Presidente, Governador, Senador, Dep. Federal, Estadual e Distrital. Vice (2, 4) e suplentes (9, 10) ficam de fora. */
+	private const HOLDER_POSITIONS = array( '1', '3', '5', '6', '7', '8' );
+
+	/** @var array<string,int> Cache por importação: cargo|UF|turno => id da disputa (0 = não existe). */
+	private array $contest_lookup = array();
+
+	/**
+	 * Descobre a disputa de um candidato do CSV pelo cargo, UF e turno. Presidente é nacional (BR);
+	 * Dep. Distrital (cargo 8) é a disputa 0008 do DF, igual ao que o EA11 cadastra.
+	 */
+	private function contest_for_candidate_row( int $election_id, array $row ): int {
+		global $wpdb;
+		$cargo = absint( $row['CD_CARGO'] ?? 0 );
+		$scope = strtoupper( sanitize_key( (string) ( $row['SG_UF'] ?? '' ) ) );
+		$round = absint( $row['NR_TURNO'] ?? 1 ) ?: 1;
+		if ( ! $cargo || '' === $scope ) { return 0; }
+		$position = str_pad( (string) $cargo, 4, '0', STR_PAD_LEFT );
+		$key = $election_id . '|' . $position . '|' . $scope . '|' . $round;
+		if ( ! array_key_exists( $key, $this->contest_lookup ) ) {
+			$this->contest_lookup[ $key ] = (int) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$wpdb->prefix}ae_contests WHERE election_id=%d AND round_no=%d AND position_code=%s AND scope_code=%s AND active=1 ORDER BY id ASC LIMIT 1", $election_id, $round, $position, $scope ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		}
+		return $this->contest_lookup[ $key ];
 	}
 
 	public function collect_results( array $payload ): array {
@@ -282,6 +308,8 @@ final class AE_TSE_Client {
 			$read++;
 			if ( count( $line ) !== count( $header ) ) { continue; }
 			$row = array_combine( $header, array_map( array( $this, 'utf8' ), $line ) );
+			// Só titulares (Presidente, Governador, Senador, Deputados); vice e suplentes não entram, mesmo sem escopo de cargos.
+			if ( false !== $cargo_key && ! in_array( (string) absint( $row[ $header[ $cargo_key ] ] ), self::HOLDER_POSITIONS, true ) ) { continue; }
 			if ( $cargos && false !== $cargo_key && ! in_array( (string) $row[ $header[ $cargo_key ] ], $cargos, true ) ) { continue; }
 			$rows[] = $row;
 		}

@@ -117,11 +117,12 @@ O botão deriva o ano da eleição e usa o pacote oficial `consulta_cand_{ANO}.z
 
 - baixa o ZIP uma vez para arquivo temporário (o arquivo inteiro, ~30 CSVs, um por UF + Brasil);
 - **processa só o(s) CSV(s) da(s) UF(s) das disputas ligadas** (derivado de `AE_Admin::import_scope_from_selection()`, que lê `collection.enabled` de cada disputa — a mesma seleção usada pra coleta de resultado). Se Presidente estiver ligado, inclui também os arquivos `BR`/`BRASIL`;
-- dentro de cada CSV, **filtra linha por linha pelo cargo** (`CD_CARGO`) das disputas ligadas — mantém vice/suplente do mesmo cargo;
+- dentro de cada CSV, **filtra linha por linha pelo cargo** (`CD_CARGO`) das disputas ligadas e **só importa titulares** (Presidente, Governador, Senador, Deputado Federal/Estadual/Distrital). **Vice (cargos 2 e 4) e suplentes (9 e 10) não são importados**, nem quando nenhuma disputa está ligada;
 - se nenhuma disputa estiver ligada (UF do site não configurada), cai no comportamento antigo e processa o Brasil inteiro, sem travar nem falhar silenciosamente;
 - lê por streaming e lotes de 250 linhas (contra o arquivo, não contra as linhas já filtradas — o cursor de retomada continua consistente mesmo descartando linha por cargo);
 - salva cursor de arquivo + linha para retomada;
 - importa `SQ_CANDIDATO`, nomes, número, partido e situação;
+- **vincula o candidato à disputa** (`ae_candidates.contest_id`) por cargo + UF + turno do CSV, na própria importação (Presidente é `BR`; Deputado Distrital é a disputa `0008` do DF). Com isso os filtros de cargo e UF do catálogo funcionam antes de a apuração começar. Reimportar preenche os candidatos já existentes, e a importação nunca apaga um vínculo que o EA20 já tenha gravado;
 - permite que o EA20 complete candidatos ausentes e derive a foto oficial por `sqcand`.
 
 **Dependência de ambiente:** requer a extensão `php-zip` (`ZipArchive`). Confirmar no `docker/Dockerfile` local (`php8.2-zip`) e em homolog/produção antes de usar.
@@ -301,9 +302,8 @@ Para mapas municipais em escala nacional, a próxima fase deve:
 
 ### Candidatos
 
-- associar automaticamente candidato à disputa por ano/cargo/UF durante o CSV;
 - cache próprio de fotos, se a política editorial exigir independência do CDN TSE;
-- páginas individuais, vice/suplentes e dados complementares;
+- páginas individuais, vice/suplentes (hoje fora da importação, por decisão) e dados complementares;
 - atualização programada quatro vezes ao dia.
 
 ### Segurança e operação
