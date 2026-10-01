@@ -2,6 +2,18 @@
 
 O que mudou em cada versão e por quê, da mais nova para a mais antiga. Comportamento permanente fica em [arquitetura.md](arquitetura.md); como validar, em [testes.md](testes.md). O que ainda está em aberto, em [../PENDENCIAS.md](../PENDENCIAS.md).
 
+## Não publicada — faixa de candidatos `[apuracao_candidatos_lista]`
+
+Shortcode novo para a home, sem mudar a versão do plugin (2.6.1). Entrega uma faixa com kicker, título, link para a página de
+Apuração (a de Configuração → Navegação) e um carrossel de candidatos (foto, cargo, nome, partido), em cinza e ajustável por
+variáveis CSS `--ae-strip-*`. Os candidatos seguem o ranking do último snapshot válido da disputa (`ordem="ranking"`, padrão; `nome`
+é alfabética; `ids` fixa a ordem). `mostrar="votos|percentual"` põe uma linha sob o nome, inclusive "0 votos" antes da apuração, e
+a faixa de uma disputa só (cargo + UF, ou presidente) se atualiza pela REST local a cada `atualizar` segundos (padrão 60, mínimo 15,
+0 desliga), sem consultar o TSE. `layout="lista"` devolve só `<ul><li>`, sem CSS nem JS. CSS e JS (`ae-candidate-strip.*`) só
+carregam nas páginas que usam a faixa. Classe: `includes/class-candidate-list.php`.
+
+**Limite conhecido.** A faixa usa a disputa de referência do candidato (1º turno); no 2º turno vai precisar seguir o turno em andamento.
+
 ## Versão 2.6.1 — a coleta arranca sem WP-Cron
 
 **Problema.** Em homologação (e em qualquer servidor que não consegue chamar o próprio endereço público, por NAT/hairpin) o
