@@ -49,6 +49,17 @@ wp eval-file wp-content/plugins/tse-apuracao/tests/admin-smoke.php
 
 Fixtures EA20 cobrem início zerado, totalização final, eleitos, não eleitos e duas vagas de Senado.
 
+## Skill do Claude Code
+
+O repositório inclui uma skill (`.claude/skills/tse-apuracao/`) que explica o plugin como um todo: ideia, fluxo, fontes do TSE, comportamentos estranhos do TSE, operação e diagnóstico. Para usá-la em qualquer projeto, instale-a como skill global:
+
+```bash
+.claude/install-skill.sh          # copia para ~/.claude/skills
+.claude/install-skill.sh --link   # ou liga por link simbólico (acompanha o repositório)
+```
+
+Depois, numa sessão nova do Claude Code, ela é acionada sozinha quando o assunto é este plugin (ou com `/tse-apuracao`). Rode o instalador de novo ao atualizar o plugin. Ao mudar o comportamento do plugin, atualize a skill no mesmo commit.
+
 ## Pendências
 
 O que ainda está em aberto, o que foi validado só em parte e o checklist de implantação por projeto estão em [PENDENCIAS.md](PENDENCIAS.md).

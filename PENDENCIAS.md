@@ -63,6 +63,7 @@ No projeto de origem (Tribuna Online), em 01/10/2026: os ponteiros dos submódul
 - **"Dados atrasados"** proporcional ao intervalo: `max(3 min, 3 × intervalo)`.
 - **Paginação** do catálogo por `ae_pagina` (não `paged`), 24 por página, com âncora `#ae-catalog-lista`.
 - **Snapshot em transação** (exige InnoDB).
+- **A skill do Claude Code vive no repositório** (`.claude/skills/tse-apuracao/`, com `.claude/install-skill.sh` para torná-la global) e muda no mesmo commit que o comportamento que ela descreve. Fica fora de pacotes gerados com `git archive` (`.gitattributes`).
 - **Duas branches** recebem os mesmos commits: `main` (PHP 8.1+) e `php7.4`. Na `php7.4` não usar `match`, `throw` em expressão nem o tipo `mixed`.
 
 ## E. Como publicar e retomar
@@ -80,5 +81,7 @@ git push github main:master php7.4:php7.4   # GitHub
 ```
 
 Depois, em cada site que usa o plugin como submódulo, atualizar o ponteiro e conferir a versão na tela **Apuração**.
+
+Ao publicar, confira se a skill em `.claude/skills/tse-apuracao/` reflete a mudança; quem já a instalou precisa rodar `.claude/install-skill.sh` de novo.
 
 **Ordem sugerida para retomar, depois da eleição:** A1, A5, A4 junto com A3, A7 junto com A8, A6, A10, e A2 só se ainda for preciso.
