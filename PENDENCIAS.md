@@ -12,6 +12,7 @@ Valem para qualquer projeto que use o plugin. Esforço e risco são estimativas.
 | --- | --- | --- | --- | --- | --- |
 | A10 | **Ler a medição de rede do TSE real** | primeiras coletas oficiais | O custo local está medido (leve ~50 ms, pesada ~250 ms) e a projeção diz que o worker satura perto de 0,6 s de rede por requisição no cenário nacional. Falta a latência real: a Visão geral e `/admin/health` (campo `perf`) já mostram média, p95 e máximo do download. Regra: p95 abaixo de ~0,4 s, nada a mudar; entre 0,4 e 0,6 s, menos UFs de Câmara ou `ae_heavy_interval` maior; acima, A2. | 15 min na primeira hora | baixo |
 | A2 | **Duas pistas de worker com locks separados** | resultado do A10 | Só vale se o p95 do download passar de ~0,6 s com muitas UFs ligadas. Com poucas UFs a folga é grande. | cerca de 1 dia | médio a alto (concorrência e mudança de esquema) |
+| A15 | **Ver o turno automático com o TSE real** | 2º turno publicado | O resolvedor e a troca ao vivo foram testados com dados sintéticos; falta ver o widget virar sozinho quando o EA20 do 2º turno sair e conferir o texto "2º turno" na home. | 30 min | baixo |
 | A14 | **Confirmar que o sync cria a disputa do 2º turno** | EA11 do TSE com 2º turno publicado (a partir de 04/10) | O código do 2º turno (vínculo por turno, `segundo_turno`, `e=s` sem virar eleito) está testado com dados sintéticos; falta ver o EA11/EA20 reais do 2º turno e conferir cargo, UF e `round_no` da disputa nova. | 1 h | baixo |
 | A13 | **Manter a branch `php7.2` (suporte contínuo, cliente específico)** | cliente no PHP 7.2 | A `php7.2` terá uso longo, então tem o mesmo nível das outras: gerada da `php7.4` por `tools/regen-php72.sh`, conferida por `tools/check-branches.sh` e testada com `tests/run-matrix.sh` (PHP 7.2.34 + WP 5.6 e PHP 7.2.12 + WP 4.9.8) a cada release, com tag `vX.Y.Z-php7.2`. Política completa em [docs/compatibilidade.md](docs/compatibilidade.md#suporte-contínuo-à-php72). O PHP 7.2 está sem correção de segurança desde 2020: o risco é do ambiente do cliente (recomendar isolamento de rede e CDN/WAF na frente e registrar a decisão de migrar); a branch só se aposenta quando o cliente confirmar a migração. | 15 a 20 min por release | baixo (o script falha em voz alta) |
 
@@ -19,7 +20,7 @@ Valem para qualquer projeto que use o plugin. Esforço e risco são estimativas.
 
 **Entregue na 2.5.0:** A1 (gravação do snapshot em lote), A3 (candidato que sai do CSV), A4 (última importação na tela e reimportação agendada, opt-in), A5 (aviso de disputas da UF desligadas), A7 (aviso de tabelas fora do InnoDB), A8 (`tests/run-in-docker.sh` e `tests/wp-integration.php`; bootstrap do PHPUnit corrigido), A11 (versão única), a maior parte do A6 e o A12 (catálogo: consulta enxuta, 1.275 → 104 ms na página 1 com 62 mil candidatos). Detalhes em [docs/versoes.md](docs/versoes.md#versão-250--importação-saúde-e-coleta-mais-barata).
 
-Planejado desde antes e ainda não feito (prioridade P2): fotos com cache próprio, páginas individuais de candidato mais completas, EA14/EA15 e mapas municipais, assinatura X.509 dos JSON, monitor de mudança de contrato EA11/EA20, política de retenção de snapshots e remoção das classes legadas.
+Planejado desde antes e ainda não feito (prioridade P2): fotos com cache próprio, EA14/EA15 e mapas municipais, assinatura X.509 dos JSON, monitor de mudança de contrato EA11/EA20, política de retenção de snapshots e remoção das classes legadas.
 
 ## B. Validação que ficou parcial
 
@@ -47,7 +48,7 @@ Os testes de coleta foram verificados também no sentido contrário: tirando de 
 
 ## C. Depende do ambiente de cada projeto
 
-Não se resolve no código do plugin. Serve de checklist de implantação.
+Não se resolve no código do plugin. O checklist foi separado em [PENDENCIAS-INFRAESTRUTURA.md](PENDENCIAS-INFRAESTRUTURA.md) (servidor, cache, cron, alertas) e [PENDENCIAS-DIA-DA-APURACAO.md](PENDENCIAS-DIA-DA-APURACAO.md) (o que só se fecha com o TSE publicando). A lista abaixo fica como referência histórica.
 
 - [ ] **Cron de sistema** rodando `bin/tse-tick-loop.sh`, com `TSE_APURACAO_CONTAINER` (se usar Docker), `TSE_APURACAO_PLUGIN_PATH` e `TSE_APURACAO_LOG_FILE` declaradas **dentro do crontab** (ele não herda variáveis do shell). Confirmar que a Visão geral mostra "Último tick … (cron do sistema)" e que o log cresce.
 - [ ] **Versão e ponteiro:** o site está na versão esperada. Se o plugin é submódulo, o ponteiro no repositório do site foi atualizado e a branch é a certa (`main` para PHP 8.1+, `php7.4` para PHP 7.4).
@@ -62,8 +63,6 @@ Não se resolve no código do plugin. Serve de checklist de implantação.
 - [ ] **Alerta externo:** o plugin não envia nada para Slack ou outro serviço (decisão da 2.4.0). Quem precisar consome `GET /wp-json/apuracao/v1/admin/health` (usuário com `manage_options`), cujo campo `tick` mostra `stale`, `cli_stopped` e `cli_never`.
 - [ ] **Observabilidade, rollback e retenção** de snapshots, definidos por redação e infraestrutura.
 
-No projeto de origem (Tribuna Online), em 01/10/2026: os ponteiros dos submódulos em ES e PE estão atrás (ES em 2.4.0, PE a conferir) e o push do ES não foi feito, porque dispara o deploy do homolog.
-
 ## D. Decisões já tomadas
 
 - **Só titulares** são importados (Presidente, Governador, Senador, Deputados). Vice e suplentes ficam de fora, de propósito.
@@ -76,6 +75,8 @@ No projeto de origem (Tribuna Online), em 01/10/2026: os ponteiros dos submódul
 - **`ae_candidates.contest_id` é a disputa de referência (menor turno)**; todas as disputas do candidato ficam em `ae_candidate_contests`. O EA20 do 2º turno não move a referência (2.6.0).
 - **A origem não é feita para tráfego direto:** a REST precisa de cache de página ou CDN na frente (medido: ~5 req/s por WordPress).
 - **Três branches** recebem os mesmos commits: `main` (PHP 8.1+), `php7.4` e `php7.2`. Na `php7.4` não usar `match`, `throw` em expressão nem o tipo `mixed`; na `php7.2`, além disso, nada do que a lista "O que a `php7.2` troca" (em E) proíbe.
+
+- **Sem página de candidato mais completa:** o plugin não é o canal oficial do TSE, e sim um facilitador de informação para portais. Biografia e patrimônio ficam no DivulgaCand; o perfil atual (dados da disputa, votos e turnos) basta.
 
 ## E. Como publicar e retomar
 
