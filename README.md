@@ -34,13 +34,14 @@ Não é necessário informar URL, código de pleito ou código de eleição. O p
 
 Lista os candidatos importados, com busca por nome/número e filtros de cargo, UF e partido. É **paginado**: 24 por página por padrão, com "Anterior / 1 2 3 … / Próxima" abaixo da lista. Ao buscar ou trocar de página, o navegador desce direto para a lista. Quando o resultado cabe numa página só, a navegação não aparece. Se a paginação não aparecer, veja "Catálogo de candidatos: paginação" na documentação completa.
 
-## Lista de candidatos para vitrine
+## Faixa de candidatos (home)
 
 ```text
-[apuracao_candidatos_lista cargo="presidente" limite="10" foto="sim"]
+[apuracao_candidatos_lista cargo="presidente" limite="10"]
+[apuracao_candidatos_lista cargo="presidente" layout="lista"]
 ```
 
-Devolve só `<ul class="ae-candidate-list">` com um `<li class="ae-candidate-item">` por candidato (link para o perfil, foto opcional e nome), sem CSS nem JavaScript do plugin: título, botão e carrossel ficam com o tema. Atributos: `cargo`, `uf`, `limite` (1 a 100, padrão 10), `foto` (`sim`, `nao` ou `somente`) e `ids` (identificadores do TSE, define a ordem).
+Por padrão monta uma faixa com kicker ("Eleições 2026"), título, link para a página de Apuração (a escolhida em Configuração) e um carrossel de candidatos (foto, cargo, nome, link para o perfil). Atributos: `cargo`, `uf`, `limite` (1 a 100, padrão 10), `foto` (`sim`, `nao` ou `somente`), `ids` (identificadores do TSE; define a ordem), `titulo`, `kicker`, `link`, `link_texto` e `layout`. Com `layout="lista"` devolve só `<ul class="ae-candidate-list">` com os `<li>`, sem título, CSS nem JavaScript, para o tema montar o próprio visual. O visual da faixa se ajusta por variáveis CSS (`--ae-strip-bg`, `--ae-strip-fg`, `--ae-strip-accent`, `--ae-strip-pill`, `--ae-strip-border`).
 
 ## Cargos do shortcode
 
