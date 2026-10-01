@@ -87,6 +87,7 @@ final class AE_Job_Runner {
 			if ( absint( get_option( 'ae_tse_blocked_until', 0 ) ) > time() ) { return; }
 			$this->recover_expired_jobs();
 			$this->enqueue_due_collections();
+			$this->maybe_enqueue_scheduled_import();
 			$this->maybe_purge_old_jobs();
 			$this->drain( 40 );
 		} finally { $this->release_lock(); }
@@ -172,6 +173,29 @@ final class AE_Job_Runner {
 		if ( $recovered ) {
 			AE_Logger::write( 'warning', 'expired_jobs_recovered', array( 'count' => (int) $recovered ) );
 		}
+	}
+
+	/**
+	 * Reimportação agendada dos candidatos. O TSE regenera o CSV todos os dias (renúncias,
+	 * substituições); opt-in por eleição em ae_auto_import_election (0 = desligada). O intervalo
+	 * padrão é de 6 h (4 por dia), ajustável por ae_auto_import_interval. Nunca importa o Brasil
+	 * inteiro sozinho: sem disputa ligada, não agenda. O download do ZIP prende o worker enquanto
+	 * dura, então convém desligar na noite da eleição.
+	 */
+	private function maybe_enqueue_scheduled_import(): void {
+		$election_id = absint( get_option( 'ae_auto_import_election', 0 ) );
+		if ( ! $election_id ) { return; }
+		$interval = max( HOUR_IN_SECONDS, (int) apply_filters( 'ae_auto_import_interval', 6 * HOUR_IN_SECONDS ) );
+		if ( (int) get_option( 'ae_auto_import_last_at', 0 ) > time() - $interval ) { return; }
+		global $wpdb;
+		$pending = $wpdb->get_var( "SELECT id FROM {$wpdb->prefix}ae_jobs WHERE type='import_candidates' AND state IN ('queued','running','retry') LIMIT 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		if ( $pending ) { return; }
+		$payload = AE_Collection_Policy::import_payload( $election_id );
+		if ( ! $payload || empty( $payload['ufs'] ) ) { return; }
+		// Marca antes de enfileirar: se a importação falhar, a próxima tentativa só vem no intervalo seguinte.
+		update_option( 'ae_auto_import_last_at', time(), false );
+		$id = self::enqueue( 'import_candidates', $payload );
+		AE_Logger::write( 'info', 'candidate_import_scheduled', array( 'job_id' => $id, 'election_id' => $election_id, 'ufs' => $payload['ufs'] ) );
 	}
 
 	/** Enqueues one collection per due contest and avoids duplicates already in flight. */

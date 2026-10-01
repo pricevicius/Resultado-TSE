@@ -9,6 +9,7 @@ final class AE_Shortcodes {
 		add_shortcode( 'apuracao_candidato', array( $this, 'candidate' ) );
 		add_shortcode( 'apuracao_candidatos', array( $this, 'catalog' ) );
 		add_shortcode( 'apuracao_navegacao', array( $this, 'navigation' ) );
+		add_shortcode( 'tse_apuracao_resumo', array( 'AE_Resumo', 'render' ) );
 	}
 	public function render( array $atts ): string {
 		$a = shortcode_atts( array( 'eleicao' => 'eleicoes-2026', 'turno' => 1, 'cargo' => '', 'abrangencia' => 'BR', 'titulo' => '' ), $atts, 'apuracao' );

@@ -24,7 +24,7 @@ final class AE_Navigation {
 
 		$current_id = get_queried_object_id();
 
-		return '<nav class="ae-election-nav" aria-label="Eleições 2026">'
+		return '<nav class="ae-election-nav" aria-label="Eleições">'
 			. '<a' . ( $current_id === $results_id ? ' aria-current="page"' : '' ) . ' href="' . esc_url( $results_url ) . '">Apuração</a>'
 			. '<a' . ( $current_id === $candidates_id ? ' aria-current="page"' : '' ) . ' href="' . esc_url( $candidates_url ) . '">Candidatos</a>'
 			. '</nav>';

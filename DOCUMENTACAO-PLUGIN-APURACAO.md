@@ -4,7 +4,7 @@
 
 Este é o runbook técnico e funcional do plugin. Ele registra o que foi implementado, o que foi decidido e o que ainda está planejado. Toda mudança que altere fonte, contrato JSON, frequência, cache, fila, interface administrativa ou publicação deve atualizar este arquivo.
 
-Última revisão: 01/10/2026 (versão 2.4.1). Desde 28/09: saúde do disparo da coleta (2.3.8), marcadores `#NE` e vínculo do candidato com a disputa (2.3.8), intervalo por tipo de disputa, Slack removido e snapshot em transação (2.4.0), paginação do catálogo (2.4.1).
+Última revisão: 01/10/2026 (versão 2.5.0). Desde 28/09: saúde do disparo da coleta (2.3.8), marcadores `#NE` e vínculo do candidato com a disputa (2.3.8), intervalo por tipo de disputa, Slack removido e snapshot em transação (2.4.0), paginação do catálogo (2.4.1), candidatos que saem do CSV, reimportação agendada, avisos de saúde, gravação do snapshot em lote e testes em WordPress real (2.5.0).
 
 **O que ainda está em aberto** (código, validação parcial, implantação por projeto e decisões já tomadas) está em [PENDENCIAS.md](PENDENCIAS.md).
 
@@ -110,6 +110,7 @@ O menu único **Apuração** contém:
 - **Importar e coletar:** botão de importação automática de candidatos e explicação da coleta protegida. A tela mostra, antes de importar, quais UFs e cargos serão trazidos (derivado das disputas ligadas). Não existem campos de URL no fluxo comum.
 - **Fila e progresso:** jobs, tentativas, erros, cursor e retry.
 - **Logs:** cem eventos mais recentes.
+- **Como usar:** o manual dos shortcodes dentro do admin (2.5.0): para cada um (`[tse_apuracao]`, `[tse_apuracao_card]`, `[apuracao_candidatos]`, `[apuracao_candidato]`, `[apuracao_navegacao]`, o legado `[apuracao]` e o bloco), os atributos, padrões e valores, exemplos com botão *Copiar* que usam a UF do site, os links de catálogo filtrado (`ae_busca`, `ae_cargo`, `ae_uf`, `ae_partido`, `ae_pagina`, `ae_candidato`), a tabela de cargos (lida de `TSE_API::CARGOS`) e um quadro "se algo não aparece". Fica em `includes/class-admin-guide.php`; o teste `tests/wp-integration.php` falha se um shortcode registrado não estiver documentado ou se algum exemplo não executar. **Ao criar ou mudar um shortcode ou atributo, atualize essa aba.**
 
 A antiga tela duplicada em **Configurações > TSE Apuração** deixou de ser registrada. Opções antigas permanecem apenas para compatibilidade visual e mock do shortcode legado.
 
@@ -118,7 +119,7 @@ A antiga tela duplicada em **Configurações > TSE Apuração** deixou de ser re
 O botão deriva o ano da eleição e usa o pacote oficial `consulta_cand_{ANO}.zip` — esse pacote é sempre nacional, o TSE não oferece download por UF, então o download em si não encolhe. O que encolhe é o processamento:
 
 - baixa o ZIP uma vez para arquivo temporário (o arquivo inteiro, ~30 CSVs, um por UF + Brasil);
-- **processa só o(s) CSV(s) da(s) UF(s) das disputas ligadas** (derivado de `AE_Admin::import_scope_from_selection()`, que lê `collection.enabled` de cada disputa — a mesma seleção usada pra coleta de resultado). Se Presidente estiver ligado, inclui também os arquivos `BR`/`BRASIL`;
+- **processa só o(s) CSV(s) da(s) UF(s) das disputas ligadas** (derivado de `AE_Collection_Policy::import_scope()`, que lê `collection.enabled` de cada disputa — a mesma seleção usada pra coleta de resultado). Se Presidente estiver ligado, inclui também os arquivos `BR`/`BRASIL`;
 - dentro de cada CSV, **filtra linha por linha pelo cargo** (`CD_CARGO`) das disputas ligadas e **só importa titulares** (Presidente, Governador, Senador, Deputado Federal/Estadual/Distrital). **Vice (cargos 2 e 4) e suplentes (9 e 10) não são importados**, nem quando nenhuma disputa está ligada;
 - se nenhuma disputa estiver ligada (UF do site não configurada), cai no comportamento antigo e processa o Brasil inteiro, sem travar nem falhar silenciosamente;
 - lê por streaming e lotes de 250 linhas (contra o arquivo, não contra as linhas já filtradas — o cursor de retomada continua consistente mesmo descartando linha por cargo);
@@ -240,6 +241,18 @@ APIs:
 - `GET /wp-json/apuracao/v1/results/{eleicao}/{turno}/{cargo}/{abrangencia}`
 - `GET /wp-json/apuracao/v1/candidates/{eleicao}/{id-externo}`
 - compatibilidade: `GET /wp-json/tse/v1/resultado?cargo=governador&uf=es&turno=1`
+
+### `[tse_apuracao_resumo]` — widget simples para a home (2.5.0)
+
+Uma caixa única com uma linha por disputa (cargo · UF, líder com partido, percentual e % apurado), selo
+geral (*Ao vivo*, *Apuração concluída* ou *Dados atrasados*, calculado sobre as disputas que já têm dado) e
+link opcional para a apuração completa. Atributos: `disputas` (lista `cargo:uf[:turno]` separada por vírgula,
+até 8; padrão Presidente e Governador e Senador da UF do site), `titulo` (padrão "Apuração"), `link`,
+`link_texto`, `atualizar` (padrão 60; 0 desliga) e `classe`. Lê só os snapshots locais; o navegador atualiza
+cada linha pelo mesmo endpoint `tse/v1/resultado` (`limite=1`), sem consultar o TSE. Código em
+`includes/class-resumo.php`, `templates/resumo.php`, `assets/js/tse-resumo.js` (depende de `tse-live`, que
+fornece `TSEConfig`) e o bloco `.tse-resumo` em `assets/css/tse-apuracao.css`, com variáveis CSS
+sobrescrevíveis. Para destacar uma disputa só, continua valendo o card abaixo.
 
 ### `[tse_apuracao_card]` — card compacto (novo, 15/09/2026)
 
@@ -842,6 +855,76 @@ com 100 candidatos de SP (incluindo homônimos) e 3 do ES:
 | `por_pagina="10"` | 10 cards e páginas 1 a 10; `por_pagina="9999"` limita a 200 |
 | cargo + partido + página 2 | filtros mantidos nos links de página |
 | links | terminam em `#ae-catalog-lista` |
+
+## Versão 2.5.0 — importação, saúde e coleta mais barata
+
+**Esquema 2.0.4.** `ae_candidates` ganhou `removed_at` (datetime, nulo). A migração roda sozinha no
+próximo carregamento do WordPress (`dbDelta`); não exige ação do operador.
+
+**Candidato que sai do CSV (A3).** A importação só insere e atualiza. Ao terminar, quem veio de um
+CSV anterior (`data_json` com `SQ_CANDIDATO`), está no escopo da importação (UFs e cargos ligados) e
+não apareceu nela recebe `removed_at`. Não se apaga nada: o cadastro e os resultados continuam, e o
+catálogo mostra "Não consta na última lista do TSE" no cartão e no perfil. Se o candidato reaparece
+numa importação seguinte, `removed_at` volta a nulo. Uma importação que não leu nenhuma linha (arquivo
+vazio ou filtro que não casou) nunca marca ninguém. Candidatos criados só pelo EA20 não têm lista de
+origem e ficam de fora.
+
+**Última importação e reimportação agendada (A4).** Ao concluir, a importação grava a opção
+`ae_last_import` (início, fim, linhas, UFs, cargos, quantos saíram e a data de geração do CSV, lida de
+`DT_GERACAO`/`HH_GERACAO`). A aba **Importar e coletar** mostra isso e a contagem de candidatos que
+não constam mais. A reimportação automática é **opt-in**, por eleição (`ae_auto_import_election`,
+0 = desligada), a cada 6 h (filtro `ae_auto_import_interval`, mínimo de 1 h). Ela usa a seleção de
+disputas, **nunca importa o Brasil inteiro sozinha** (sem disputa ligada, não agenda), não enfileira
+se já há importação pendente e só tenta de novo no intervalo seguinte se falhar. O download do ZIP
+prende o worker enquanto dura: desligue na noite da eleição.
+
+**Avisos de saúde (A5, A7).** Na Visão geral e na Seleção de disputas, um aviso lista as disputas da UF
+do site (`ae_site_uf`) que estão desligadas, o que antes deixava o Deputado Federal parado sem erro
+visível. A Visão geral também avisa se alguma tabela `ae_*` não é InnoDB (a transação do snapshot não
+protege nada em MyISAM) e a REST de saúde traz `non_innodb_tables`.
+
+**Gravação do snapshot em lote (A1).** `persist_result` fazia 3 a 4 queries por candidato (mais de
+4.400 para um Deputado Federal de SP). Agora resolve a eleição uma vez, busca os candidatos existentes
+em lotes, só faz UPDATE de quem mudou e grava o ranking em INSERTs de 200 linhas. Medido em WordPress
+real com 1.100 candidatos: de 4.406 para 16 queries e de ~2 s para ~0,1 s no caso normal (1ª coleta,
+com candidatos novos: ~1.100 queries, uma por candidato inserido). A saída é idêntica à anterior
+(hash do ranking e do cadastro conferido). Efeito colateral: `ae_candidates.updated_at` só muda
+quando o dado muda, não a cada snapshot. Isto não encurta uma coleta que já começou nem muda o lock
+do worker; a necessidade de duas pistas de worker (A2) deve ser reavaliada com carga real.
+
+**Sem valores fixos de eleição (A6, parte).** O ano sugerido nos formulários é o ano par corrente ou o
+seguinte (`AE_Plugin::default_election_year()`, filtro `ae_default_election_year`); o cabeçalho do
+catálogo usa o ano da eleição com candidatos; "Simulado" e o placeholder de UF são neutros; o plugin
+não cria mais a eleição `eleicoes-2026` sozinho (quem já a tem, mantém). Continuam fixos de propósito:
+o caminho do simulado do TSE (`simulado/simulado2026`, convenção do próprio TSE), os padrões do bloco
+Gutenberg e do `[apuracao]` legado (`eleicoes-2026`, mudar alteraria blocos já salvos) e a doc.
+
+**Versão única (A11).** `AE_VERSION` passou a ser definida a partir de `TSE_APURACAO_VERSION`.
+
+### Testes em WordPress real
+
+`tests/run-in-docker.sh` roda três suítes no container do site (sem PHPUnit) e sai com código diferente de
+zero se alguma falhar. Todas restauram o que alteram.
+
+| Suíte | O que cobre |
+| --- | --- |
+| `tests/admin-smoke.php` e `tests/wp-integration.php` | abas do admin, avisos de UF e InnoDB, importação de candidatos com CSV sintético (UF fictícia `ZZ`), marcação e retorno de removidos, agendamento, `persist_result` em lote, snapshot idempotente e rollback da transação com falha forçada |
+| `tests/wp-collect.php` | coleta ponta a ponta com um **TSE falso** (`pre_http_request`, UF fictícia `ZY`, nenhuma requisição real): zerado, parcial, final, 2º turno, divergência `and`/`tf`, 304, 404 com backoff, 429 com pausa, 500, JSON inválido; REST, shortcode e card |
+| `tests/http-admin.sh` | POSTs reais do admin por HTTP (cookie de administrador e nonce lidos da página): reimportação automática e Seleção de disputas, com nonce inválido, sem login e restauração de `ae_contests` |
+
+Variáveis: `TSE_APURACAO_CONTAINER` (padrão `revistaforum-app`), `TSE_WP_PATH`, `TSE_PLUGIN_REL`, `TSE_SITE_URL`.
+O TSE falso só reproduz o formato documentado do EA20; ele não substitui uma coleta contra o TSE real
+(rede, bloqueio por IP). O `tests/bootstrap.php` do PHPUnit agora carrega `tse-apuracao.php`, mas o PHPUnit
+ainda exige a biblioteca de testes do WordPress (`WP_TESTS_DIR`), que não está instalada neste ambiente.
+
+### Medições locais (2.5.0)
+
+Docker local, sem rede, sem concorrência: coleta de Deputado Federal com 1.100 candidatos (JSON de 173 KB)
+~0,3 s e ~20 queries no caso normal (1ª coleta ~0,9 s e ~1.100 queries, uma por candidato novo; 304 em
+~10 ms). Antes do A1 eram ~2 s e ~4.400 queries. Catálogo com 62 mil candidatos: página 1 em ~100 ms (era
+~1.275 ms, antes de tirar `DISTINCT` e `data_json` da consulta); filtros por cargo+UF ~50–75 ms; busca por
+nome ~200 ms; páginas muito profundas sem filtro ~500 ms. Isso é latência local: em produção o banco tem
+latência de rede, e é por isso que o número de queries importa mais que os milissegundos.
 
 ## Repositório — código movido para submódulo (22/09/2026)
 

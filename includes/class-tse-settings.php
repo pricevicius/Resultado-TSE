@@ -8,7 +8,7 @@ class TSE_Settings {
     public static function defaults(): array {
         return [
             'base_url'      => 'https://resultados.tse.jus.br/oficial/',
-            'ano'           => '2026',
+            'ano'           => (string) AE_Plugin::default_election_year(),
             'eleicao_id'    => '',   // vazio = auto via ele-c.json
             'pleito_id'     => '',   // vazio = auto via ele-c.json
             'ttl_ao_vivo'   => 30,   // segundos de cache durante eleição
@@ -45,7 +45,7 @@ class TSE_Settings {
 
         $fields_api = [
             'base_url'    => [ 'URL base do TSE',        'text',   'https://resultados.tse.jus.br/oficial/' ],
-            'ano'         => [ 'Ano da eleição',         'text',   '2026' ],
+            'ano'         => [ 'Ano da eleição',         'text',   'Ex.: ' . AE_Plugin::default_election_year() ],
             'eleicao_id'  => [ 'ID da eleição (CD)',     'text',   'Deixe em branco para detectar automaticamente via ele-c.json' ],
             'pleito_id'   => [ 'ID do pleito (PL)',      'text',   'Deixe em branco para detectar automaticamente' ],
             'ttl_ao_vivo' => [ 'Cache ao vivo (seg)',    'number', '30 segundos recomendado durante apuração' ],

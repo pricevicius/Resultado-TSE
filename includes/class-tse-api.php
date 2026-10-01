@@ -102,7 +102,7 @@ class TSE_API {
     public static function get_resultado( string $cargo, string $uf, string $eleicao, int $pleito, int $ttl = 30 ): array {
         $opts      = get_option( 'tse_apuracao_settings', [] );
         $base_url  = $opts['base_url'] ?? 'https://resultados.tse.jus.br/oficial/';
-        $ano       = $opts['ano'] ?? '2026';
+        $ano       = $opts['ano'] ?? (string) AE_Plugin::default_election_year();
         $uf        = strtolower( sanitize_text_field( $uf ) );
         $cargo_num = self::CARGOS[ $cargo ] ?? $cargo;
 

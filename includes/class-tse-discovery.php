@@ -27,7 +27,7 @@ final class AE_TSE_Discovery {
 
 	public static function sync( array $payload ): array {
 		$environment = sanitize_key( $payload['environment'] ?? 'oficial' );
-		$year = max( 2022, absint( $payload['year'] ?? 2026 ) );
+		$year = max( 2022, absint( $payload['year'] ?? AE_Plugin::default_election_year() ) );
 		// UF do site (opcional pra compatibilidade, mas sem ela toda disputa nova nasce ligada nas 27 UFs).
 		$site_uf = strtoupper( substr( sanitize_key( $payload['site_uf'] ?? get_option( 'ae_site_uf', '' ) ), 0, 2 ) );
 		$url = self::config_url( $environment );
