@@ -2,8 +2,8 @@
 defined( 'ABSPATH' ) || exit;
 
 final class AE_Shortcodes {
-	private static ?AE_Shortcodes $instance = null;
-	public static function instance(): AE_Shortcodes { return self::$instance ??= new self(); }
+	private static $instance = null;
+	public static function instance(): AE_Shortcodes { if ( null === self::$instance ) { self::$instance = new self(); } return self::$instance; }
 	public function register(): void {
 		add_shortcode( 'apuracao', array( $this, 'render' ) );
 		add_shortcode( 'apuracao_candidato', array( $this, 'candidate' ) );

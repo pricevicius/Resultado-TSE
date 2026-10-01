@@ -55,7 +55,7 @@ final class AE_Resumo {
 
 	/** Estado do bloco: atrasado se qualquer disputa está atrasada; concluída só se todas totalizaram. */
 	private static function estado( array $rows ): string {
-		$with_data = array_filter( $rows, static fn( array $r ): bool => null !== $r['lider'] );
+		$with_data = array_filter( $rows, static function ( array $r ): bool { return null !== $r['lider']; });
 		if ( ! $with_data ) { return 'Aguardando apuração'; }
 		foreach ( $with_data as $r ) { if ( ! empty( $r['dados']['atrasado'] ) ) { return 'Dados atrasados'; } }
 		foreach ( $with_data as $r ) { if ( 'Totalizado' !== ( $r['dados']['status'] ?? '' ) ) { return 'Ao vivo'; } }
