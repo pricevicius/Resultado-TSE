@@ -2,7 +2,7 @@
 defined( 'ABSPATH' ) || exit;
 
 final class AE_Job_Runner {
-	private static ?AE_Job_Runner $instance = null;
+	private static $instance = null;
 	/** A MySQL named lock is shared by CLI, WP-Cron and web workers without Redis. */
 	private const LOCK_NAME = 'ae_apuracao_job_runner';
 	/** Bounded opportunistic drain triggered by real page/REST traffic, so results keep moving even when WP-Cron's own loopback never fires (common on hosts that block self-requests) without needing any server-side cron setup. */
@@ -16,7 +16,7 @@ final class AE_Job_Runner {
 	/** O cron de sistema dispara a cada minuto; passou disso sem tick de CLI, ele parou. */
 	private const CLI_TICK_STALE_SECONDS = 120;
 
-	public static function instance(): AE_Job_Runner { return self::$instance ??= new self(); }
+	public static function instance(): AE_Job_Runner { if ( null === self::$instance ) { self::$instance = new self(); } return self::$instance; }
 
 	public static function enqueue( string $type, array $payload, array $cursor = array(), int $delay = 0 ): int {
 		global $wpdb;
@@ -240,8 +240,9 @@ final class AE_Job_Runner {
 
 	private function run( object $job ): void {
 		try {
-			$payload = json_decode( $job->payload_json, true, 512, JSON_THROW_ON_ERROR );
-			$cursor = $job->cursor_json ? json_decode( $job->cursor_json, true, 512, JSON_THROW_ON_ERROR ) : array();
+			$payload = json_decode( $job->payload_json, true );
+			$cursor = $job->cursor_json ? json_decode( $job->cursor_json, true ) : array();
+			if ( JSON_ERROR_NONE !== json_last_error() || ! is_array( $payload ) || ! is_array( $cursor ) ) { throw new RuntimeException( 'Payload ou cursor do job inválido.' ); }
 			if ( 'import_candidates' === $job->type ) {
 				$done = AE_TSE_Client::instance()->import_candidates_page( $payload, $cursor, $job->id );
 			} elseif ( 'collect_results' === $job->type ) {
