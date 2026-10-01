@@ -78,17 +78,18 @@ No projeto de origem (Tribuna Online), em 01/10/2026: os ponteiros dos submódul
 Para atualizar a `php7.2` depois de qualquer mudança na `php7.4`:
 
 ```bash
-git checkout php7.2 && git reset --hard php7.4 && python3 tools/port-php72.py
-# lint no 7.2 e suítes em WordPress com PHP 7.2; então:
-git add -A && git commit -m "port: variante PHP 7.2 gerada de php7.4 @ <sha>"
+tools/regen-php72.sh      # árvore limpa; gera a variante e avança a php7.2 sem reescrever o histórico
+# lint no 7.2 e suítes em WordPress com PHP 7.2; então tag (se for release) e push
 ```
+
+O script **não usa `reset --hard`**: a `php7.2` é publicada, e reescrevê-la exigiria push forçado. Ele gera a variante num commit e faz a branch avançar por um commit de junção com a mesma árvore.
 
 **Publicar uma mudança** (nas três branches e nos dois remotes):
 
 ```bash
 git checkout main      # commit aqui
 git checkout php7.4 && git cherry-pick <commit>   # conflito esperado só no cabeçalho de versão: manter a versão nova e "Requires PHP: 7.4"
-git checkout php7.2 && git reset --hard php7.4 && python3 tools/port-php72.py && git add -A && git commit -m "port: ..."   # gerada, sem cherry-pick (ver acima)
+tools/regen-php72.sh   # php7.2 gerada da php7.4, sem cherry-pick e sem push forçado (ver acima)
 # lint nas duas versões:
 docker run --rm -v "$PWD":/p php:7.4-cli sh -c 'for f in /p/includes/*.php /p/tse-apuracao.php; do php -l $f; done'
 docker run --rm -v "$PWD":/p php:8.2-cli sh -c 'for f in /p/includes/*.php /p/tse-apuracao.php; do php -l $f; done'
