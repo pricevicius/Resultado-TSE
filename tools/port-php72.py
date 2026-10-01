@@ -93,8 +93,10 @@ def main():
     for path in code:
         text = read(path)
         new = text.replace('return self::$instance ??= new self();', 'if ( null === self::$instance ) { self::$instance = new self(); } return self::$instance;')
-        new = re.sub(r'((?:private|public|protected)(?:\s+static)?)\s+\??[A-Za-z_\\]+\s+(\$)', r'\1 \2', new)
+        new = re.sub(r'((?:private|public|protected)(?:\s+static)?)\s+(?!static\b)\??[A-Za-z_\\]+\s+(\$)', r'\1 \2', new)
         new = arrow_to_closure(new)
+        # JSON_THROW_ON_ERROR em chamadas soltas (testes): sem a flag, o json_decode devolve null em vez de lançar.
+        new = re.sub(r',\s*true,\s*512,\s*JSON_THROW_ON_ERROR\s*\)', ', true )', new)
         if new != text:
             write(path, new)
 
@@ -102,7 +104,7 @@ def main():
 
     # Conferência final: nada do 7.3/7.4 pode ter sobrado.
     leftovers = []
-    forbidden = re.compile(r'\bfn\s*\(|\?\?=|JSON_THROW_ON_ERROR|JsonException|^\s*(?:private|public|protected)(?:\s+static)?\s+\??[A-Za-z_\\]+\s+\$', re.M)
+    forbidden = re.compile(r'\bfn\s*\(|\?\?=|JSON_THROW_ON_ERROR|JsonException|^\s*(?:private|public|protected)(?:\s+static)?\s+(?!static\b)\??[A-Za-z_\\]+\s+\$', re.M)
     for path in code:
         for number, line in enumerate(read(path).split('\n'), 1):
             if forbidden.search(line) and not line.lstrip().startswith(('*', '//', '/*')):
