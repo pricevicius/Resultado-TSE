@@ -49,6 +49,8 @@ Por padrão monta uma faixa com kicker ("Eleições 2026"), título, link para a
 
 Os demais atributos são `uf`, `turno`, `limite`, `atualizar` e `titulo`.
 
+**Turno automático.** `turno="auto"` (o padrão) segue o turno em andamento de cada disputa: o bloco fica no 1º turno até o 2º começar a apurar e então troca sozinho, sem recarregar a página, com o selo "2º turno". A faixa de candidatos passa a mostrar só os finalistas. Com os dois turnos apurando, `[tse_apuracao]` ganha um seletor de turno (por bloco; o link `?ae_turno=1|2` também funciona). `turno="1"` ou `"2"` fixa o turno.
+
 ## Proteções
 
 - teto interno de 20 requisições/s, abaixo do limite de 100/s informado pelo TSE;

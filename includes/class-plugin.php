@@ -8,6 +8,7 @@ require_once AE_DIR . 'includes/class-collection-policy.php';
 require_once AE_DIR . 'includes/class-job-runner.php';
 require_once AE_DIR . 'includes/class-tse-client.php';
 require_once AE_DIR . 'includes/class-tse-discovery.php';
+require_once AE_DIR . 'includes/class-rounds.php';
 require_once AE_DIR . 'includes/class-results.php';
 require_once AE_DIR . 'includes/class-candidate-catalog.php';
 require_once AE_DIR . 'includes/class-candidate-list.php';

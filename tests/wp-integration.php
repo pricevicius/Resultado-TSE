@@ -113,7 +113,7 @@ foreach ( $examples as $example ) {
 }
 $check( 'manual: todo exemplo copiável executa como shortcode', ! $broken, implode( ' | ', $broken ) );
 $parsed = AE_Resumo::parse_disputas( 'governador:SP, senador:sp:2,xyz:rj,presidente,vereador:rj:9,deputado-federal:sp:0' );
-$check( 'resumo: lê cargo:uf:turno, ignora cargo desconhecido, usa br e limita o turno', array( array( 'governador', 'sp', 1 ), array( 'senador', 'sp', 2 ), array( 'presidente', 'br', 1 ), array( 'vereador', 'rj', 2 ), array( 'deputado-federal', 'sp', 1 ) ) === array_map( static fn( $r ) => array( $r['cargo'], $r['uf'], $r['turno'] ), $parsed ), wp_json_encode( $parsed ) );
+$check( 'resumo: lê cargo:uf:turno, ignora cargo desconhecido, usa br, turno omitido ou 0 = automático e limita o turno a 2', array( array( 'governador', 'sp', 0 ), array( 'senador', 'sp', 2 ), array( 'presidente', 'br', 0 ), array( 'vereador', 'rj', 2 ), array( 'deputado-federal', 'sp', 0 ) ) === array_map( static fn( $r ) => array( $r['cargo'], $r['uf'], $r['turno'] ), $parsed ), wp_json_encode( $parsed ) );
 $check( 'resumo: no máximo 8 disputas', 8 === count( AE_Resumo::parse_disputas( implode( ',', array_fill( 0, 20, 'governador:sp' ) ) ) ) );
 $html = do_shortcode( '[tse_apuracao_resumo disputas="governador:zz" titulo="<b>X</b>" link="javascript:alert(1)"]' );
 $check( 'resumo: escapa título, recusa link perigoso e mostra "Aguardando apuração"', false === strpos( $html, '<b>X' ) && false === strpos( $html, 'javascript:' ) && false !== strpos( $html, 'Aguardando apuração' ) );

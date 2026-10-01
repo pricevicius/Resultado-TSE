@@ -2,7 +2,7 @@
 
 Tudo roda em WordPress real (Docker), sem rede para o TSE (o TSE é falso e interceptado). Cada suíte restaura o que altera. Os comandos de uso diário estão em [../PENDENCIAS.md](../PENDENCIAS.md) (seção E).
 
-## Testes (2.6.1)
+## Testes (2.7.0)
 
 | Comando | O que faz |
 | --- | --- |
@@ -22,6 +22,7 @@ zero se alguma falhar. Todas restauram o que alteram.
 | --- | --- |
 | `tests/admin-smoke.php` e `tests/wp-integration.php` | abas do admin, avisos de UF e InnoDB, importação de candidatos com CSV sintético (UF fictícia `ZZ`), marcação e retorno de removidos, agendamento, `persist_result` em lote, snapshot idempotente e rollback da transação com falha forçada |
 | `tests/wp-collect.php` | coleta ponta a ponta com um **TSE falso** (`pre_http_request`, UF fictícia `ZY`, nenhuma requisição real): zerado, parcial, final, 2º turno, divergência `and`/`tf`, 304, 404 com backoff, 429 com pausa, 500, JSON inválido; REST, shortcode e card |
+| `tests/e2e/turno-browser.js` | **navegador real** (Chromium headless por CDP, sem dependências): cria uma disputa fictícia (`EY`) com `tests/e2e/turno-fixture.php`, abre uma página com blocos repetidos (apuração ×2, cards, resumo e faixa), avança o 2º turno no banco e confere a virada sozinha (selo, finalistas, seletor, card que some), o clique no seletor sem recarregar, a requisição compartilhada entre blocos iguais, ausência de erro de JS e `?ae_turno=1`. Remove a massa no fim. Uso: `node tests/e2e/turno-browser.js` (usa o Chromium do Playwright ou `CHROME=`) |
 | `tests/wp-kick.php` | `kick()` sem WP-Cron: com a fila vazia cria e executa a coleta devida, respeita o intervalo mínimo, a checagem espaçada e o breaker do TSE; `run_now()` e `loopback_status()`. TSE falso (UF fictícia `ZY`); restaura a configuração das disputas ao final |
 | `tests/http-admin.sh` | POSTs reais do admin por HTTP (cookie de administrador e nonce lidos da página): reimportação automática e Seleção de disputas, com nonce inválido, sem login e restauração de `ae_contests` |
 

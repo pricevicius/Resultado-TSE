@@ -41,6 +41,8 @@ $atualizado_em = $dados['atualizado_em'] ?? '';
 $atualizado_em_local = $dados['atualizado_em_local'] ?? $atualizado_em;
 $proxima_ts    = $dados['proxima_atualizacao_ts'] ?? null;
 $candidatos    = $dados['candidatos'] ?? [];
+$turno_atual   = (int) ( $dados['turno'] ?? 1 );
+$turnos        = array_map( 'intval', (array) ( $dados['turnos'] ?? [] ) );
 
 // Voto máximo para escala das barras
 $max_votos = ! empty( $candidatos ) ? max( array_column( $candidatos, 'votos' ) ) : 1;
@@ -52,7 +54,8 @@ $max_votos = max( $max_votos, 1 );
     class="tse-apuracao-widget"
     data-cargo="<?php echo esc_attr( $cargo ); ?>"
     data-uf="<?php echo esc_attr( $uf ); ?>"
-	data-turno="<?php echo esc_attr( $turno ); ?>"
+	data-turno="<?php echo esc_attr( $turno > 0 ? $turno : 'auto' ); ?>"
+	data-turno-atual="<?php echo esc_attr( $turno_atual ); ?>"
     data-limite="<?php echo esc_attr( $limite ); ?>"
     data-atualizar="<?php echo esc_attr( $atualizar ); ?>"
     style="--tse-primary:<?php echo $cor; ?>;--tse-eleito:<?php echo $cor_eleito; ?>"
@@ -62,7 +65,13 @@ $max_votos = max( $max_votos, 1 );
     <!-- Cabeçalho -->
     <div class="tse-header">
         <div class="tse-header-left">
-            <h2 class="tse-titulo"><?php echo esc_html( $titulo_final ); ?></h2>
+            <h2 class="tse-titulo"><?php echo esc_html( $titulo_final ); ?><span class="tse-turno-selo"<?php echo $turno_atual > 1 ? '' : ' hidden'; ?>><?php echo esc_html( $turno_atual > 1 ? $turno_atual . 'º turno' : '' ); ?></span></h2>
+            <?php // Seletor de turno: só quando a disputa já tem os dois com apuração iniciada. Links reais (?ae_turno=), que o JS troca sem recarregar. ?>
+            <nav class="tse-turnos" aria-label="Turno"<?php echo count( $turnos ) > 1 ? '' : ' hidden'; ?>>
+                <?php foreach ( $turnos as $t ) : ?>
+                <a class="tse-turno-opcao" href="<?php echo esc_url( add_query_arg( 'ae_turno', $t ) ); ?>" data-turno-sel="<?php echo esc_attr( $t ); ?>"<?php echo $t === $turno_atual ? ' aria-current="true"' : ''; ?>><?php echo esc_html( $t . 'º turno' ); ?></a>
+                <?php endforeach; ?>
+            </nav>
             <?php if ( $pct_apurado ) : ?>
             <div class="tse-apurado">
                 <div class="tse-apurado-barra" role="progressbar" aria-valuenow="<?php echo esc_attr( $pct_numero ); ?>" aria-valuemin="0" aria-valuemax="100">
