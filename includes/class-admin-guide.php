@@ -40,7 +40,7 @@ final class AE_Admin_Guide {
 				<tr><td>Um bloco simples para a home, com várias disputas numa só caixa</td><td><?php self::inline( '[tse_apuracao_resumo disputas="presidente:br,governador:' . $uf . '"]' ); ?></td></tr>
 				<tr><td>Um card compacto com o líder (para a home ou grades)</td><td><?php self::inline( '[tse_apuracao_card cargo="governador" uf="' . $uf . '"]' ); ?></td></tr>
 				<tr><td>Uma página de consulta de candidatos, com busca e paginação</td><td><?php self::inline( '[apuracao_candidatos]' ); ?></td></tr>
-				<tr><td>Uma lista de candidatos (<code>&lt;ul&gt;&lt;li&gt;</code>) para o tema montar vitrine ou carrossel</td><td><?php self::inline( '[apuracao_candidatos_lista cargo="presidente" limite="10"]' ); ?></td></tr>
+				<tr><td>Uma faixa de candidatos com título, link para a apuração e carrossel (para a home)</td><td><?php self::inline( '[apuracao_candidatos_lista cargo="presidente" limite="10"]' ); ?></td></tr>
 				<tr><td>Um menu entre a página de Apuração e a de Candidatos</td><td><?php self::inline( '[apuracao_navegacao]' ); ?></td></tr>
 			</tbody></table>
 		</section>
@@ -68,9 +68,10 @@ final class AE_Admin_Guide {
 
 		<section class="ae-panel">
 			<h2><code>[tse_apuracao_resumo]</code> — widget simples para a home</h2>
-			<p>Uma caixa única com <strong>uma linha por disputa</strong>: cargo e UF, o líder com partido, o percentual e quanto já foi apurado, mais um selo geral (<em>Ao vivo</em>, <em>Apuração concluída</em> ou <em>Dados atrasados</em>) e um link opcional para a página completa. Atualiza sozinho. É o mais indicado para a home, a barra lateral e matérias; para destacar uma disputa só, use o card abaixo.</p>
+			<p>Uma caixa única com <strong>um bloco por disputa</strong>: cargo e UF, os primeiros colocados (3 por padrão) com partido, o percentual e quanto já foi apurado, mais um selo geral (<em>Ao vivo</em>, <em>Apuração concluída</em> ou <em>Dados atrasados</em>) e um link opcional para a página completa. Atualiza sozinho. É o mais indicado para a home, a barra lateral e matérias; para destacar uma disputa só, use o card abaixo.</p>
 			<table class="widefat striped"><thead><tr><th>Atributo</th><th>O que faz</th><th>Padrão</th><th>Valores</th></tr></thead><tbody>
 				<tr><td><code>disputas</code></td><td>Quais disputas listar, separadas por vírgula, cada uma no formato <code>cargo:uf</code> (ou <code>cargo:uf:turno</code>)</td><td>Presidente, e Governador e Senador da UF deste site</td><td>até 8 disputas; cargos da tabela abaixo; <code>uf</code> em minúsculas (<code>br</code> para Presidente); turno <code>1</code> ou <code>2</code></td></tr>
+				<tr><td><code>limite</code></td><td>Quantos candidatos mostrar em cada disputa</td><td><code>3</code></td><td>de 1 a 10; <code>1</code> = só o líder</td></tr>
 				<tr><td><code>titulo</code></td><td>Título da caixa</td><td><code>Apuração</code></td><td>texto livre</td></tr>
 				<tr><td><code>link</code></td><td>Endereço da página de apuração completa (mostra o link no rodapé)</td><td>sem link</td><td>URL, por exemplo <code>/apuracao/</code></td></tr>
 				<tr><td><code>link_texto</code></td><td>Texto do link</td><td><code>Ver apuração completa</code></td><td>texto livre</td></tr>
@@ -130,18 +131,24 @@ final class AE_Admin_Guide {
 		</section>
 
 		<section class="ae-panel">
-			<h2><code>[apuracao_candidatos_lista]</code> — lista de candidatos para vitrine</h2>
-			<p>Devolve só o HTML de uma lista (<code>&lt;ul class="ae-candidate-list"&gt;</code> com um <code>&lt;li class="ae-candidate-item"&gt;</code> por candidato), sem título, sem CSS e sem JavaScript do plugin: título, botão e carrossel ficam por conta do tema. Usa a eleição mais recente importada e ignora candidatos que saíram da lista do TSE.</p>
+			<h2><code>[apuracao_candidatos_lista]</code> — faixa de candidatos com carrossel</h2>
+			<p>Monta uma faixa para a home: kicker (<em>Eleições 2026</em>), título, link para a página de Apuração e um carrossel de candidatos (foto, cargo e nome, cada um levando ao perfil). Os botões anterior/próximo só aparecem quando há o que rolar; sem JavaScript a faixa continua rolável. O visual é mínimo e se ajusta por variáveis CSS (<code>--ae-strip-bg</code>, <code>--ae-strip-fg</code>, <code>--ae-strip-accent</code>, <code>--ae-strip-pill</code>, <code>--ae-strip-border</code>), e o CSS/JS só carregam nas páginas que usam a faixa. Usa o ano mais recente importado e ignora candidatos que saíram da lista do TSE.</p>
 			<table class="widefat striped"><thead><tr><th>Atributo</th><th>O que faz</th><th>Padrão</th><th>Valores</th></tr></thead><tbody>
 				<tr><td><code>cargo</code></td><td>Filtra pelo cargo</td><td>todos</td><td>os mesmos cargos da tabela abaixo (<code>presidente</code>, <code>governador</code>…)</td></tr>
 				<tr><td><code>uf</code></td><td>Filtra pelo estado</td><td>todos</td><td>sigla, como <code>SP</code> (<code>BR</code> para presidente)</td></tr>
 				<tr><td><code>limite</code></td><td>Quantos candidatos</td><td><code>10</code></td><td>de 1 a 100</td></tr>
 				<tr><td><code>foto</code></td><td>Foto do candidato</td><td><code>sim</code></td><td><code>sim</code> mostra a foto quando existe; <code>nao</code> omite a foto; <code>somente</code> lista só quem tem foto</td></tr>
 				<tr><td><code>ids</code></td><td>Escolhe os candidatos e a ordem</td><td>ordem alfabética</td><td>identificadores do TSE separados por vírgula (os mesmos de <code>?ae_candidato=</code>)</td></tr>
+				<tr><td><code>layout</code></td><td>Faixa pronta ou só a lista</td><td><code>carrossel</code></td><td><code>lista</code> devolve só <code>&lt;ul class="ae-candidate-list"&gt;&lt;li&gt;</code>, sem título, CSS nem JS, para o tema montar o próprio visual</td></tr>
+				<tr><td><code>titulo</code></td><td>Título da faixa</td><td><code>Acompanhe por candidato</code></td><td>texto; vazio (<code>titulo=""</code>) oculta</td></tr>
+				<tr><td><code>kicker</code></td><td>Chamada acima do título</td><td><code>Eleições 2026</code> (ano importado)</td><td>texto; vazio oculta</td></tr>
+				<tr><td><code>link</code></td><td>Endereço do botão</td><td>página de Apuração de Configuração</td><td>URL; vazio oculta o botão</td></tr>
+				<tr><td><code>link_texto</code></td><td>Texto do botão</td><td><code>Ver apuração</code></td><td>texto</td></tr>
 			</tbody></table>
 			<?php
 			self::example( 'Presidenciáveis com foto', '[apuracao_candidatos_lista cargo="presidente" limite="10"]' );
 			self::example( 'Governadores de um estado, sem foto', '[apuracao_candidatos_lista cargo="governador" uf="' . $uf . '" foto="nao"]' );
+			self::example( 'Só a lista, para o tema estilizar', '[apuracao_candidatos_lista cargo="presidente" layout="lista"]' );
 			?>
 			<p class="description">Cada item traz <code>data-numero</code>, <code>data-partido</code>, <code>data-cargo</code> e <code>data-uf</code>, e leva ao perfil na página de Candidatos escolhida em Configuração.</p>
 		</section>

@@ -245,12 +245,12 @@ APIs:
 
 ### `[tse_apuracao_resumo]` — widget simples para a home (2.5.0)
 
-Uma caixa única com uma linha por disputa (cargo · UF, líder com partido, percentual e % apurado), selo
+Uma caixa única com um bloco por disputa (cargo · UF, os primeiros colocados com partido, percentual e % apurado), selo
 geral (*Ao vivo*, *Apuração concluída* ou *Dados atrasados*, calculado sobre as disputas que já têm dado) e
 link opcional para a apuração completa. Atributos: `disputas` (lista `cargo:uf[:turno]` separada por vírgula,
-até 8; padrão Presidente e Governador e Senador da UF do site), `titulo` (padrão "Apuração"), `link`,
+até 8; padrão Presidente e Governador e Senador da UF do site), `limite` (candidatos por disputa, 1 a 10; padrão 3), `titulo` (padrão "Apuração"), `link`,
 `link_texto`, `atualizar` (padrão 60; 0 desliga) e `classe`. Lê só os snapshots locais; o navegador atualiza
-cada linha pelo mesmo endpoint `tse/v1/resultado` (`limite=1`), sem consultar o TSE. Código em
+cada linha pelo mesmo endpoint `tse/v1/resultado` (com o `limite` da linha), sem consultar o TSE. Código em
 `includes/class-resumo.php`, `templates/resumo.php`, `assets/js/tse-resumo.js` (depende de `tse-live`, que
 fornece `TSEConfig`) e o bloco `.tse-resumo` em `assets/css/tse-apuracao.css`, com variáveis CSS
 sobrescrevíveis. Para destacar uma disputa só, continua valendo o card abaixo.

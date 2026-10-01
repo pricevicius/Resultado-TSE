@@ -560,11 +560,14 @@
 .tse-resumo-item{align-items:baseline;border-top:1px solid var(--tse-border);display:grid;gap:2px 12px;grid-template-columns:1fr auto;padding:10px 14px}
 .tse-resumo-item:first-child{border-top:0}
 .tse-resumo-disputa{color:var(--tse-muted);font-size:12px;font-weight:600;grid-column:1/-1;letter-spacing:.04em;text-transform:uppercase}
+.tse-resumo-candidatos{display:grid;gap:4px;grid-column:1/-1;list-style:none;margin:0;padding:0}
+.tse-resumo-cand{align-items:baseline;display:grid;gap:0 12px;grid-template-columns:1fr auto}
+.tse-resumo-cand:not(:first-child) .tse-resumo-pct{font-size:15px;font-weight:600}
+.tse-resumo-cand.tse-eleito .tse-resumo-pct{color:var(--tse-eleito)}
 .tse-resumo-lider{font-size:15px;min-width:0}
 .tse-resumo-partido{color:var(--tse-muted);font-size:13px}
 .tse-resumo-pct{font-size:18px;font-weight:700;text-align:right}
 .tse-resumo-apurado{color:var(--tse-muted);font-size:12px;grid-column:1/-1}
-.tse-resumo-item.tse-eleito .tse-resumo-pct{color:var(--tse-eleito)}
 .tse-resumo-aguardando,.tse-resumo-vazio{color:var(--tse-muted);font-style:italic}
 .tse-resumo-vazio{margin:0;padding:12px 14px}
 .tse-resumo-rodape{border-top:1px solid var(--tse-border);padding:9px 14px;text-align:right}

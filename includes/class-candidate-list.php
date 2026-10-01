@@ -2,10 +2,11 @@
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Lista enxuta de candidatos para vitrines (home, faixas, carrosséis): só markup, sem CSS nem JS do plugin.
- * O tema cuida do título, do botão e do carrossel; o plugin entrega <ul><li> com classes estáveis.
+ * Vitrine de candidatos para a home: faixa com título, link para a apuração e carrossel (layout="carrossel", o padrão),
+ * ou só o <ul><li> (layout="lista") para o tema montar o próprio visual. O visual do carrossel é mínimo e se ajusta
+ * por variáveis CSS (--ae-strip-*); CSS e JS só são carregados quando o carrossel aparece na página.
  *
- * [apuracao_candidatos_lista cargo="presidente" uf="" limite="10" foto="sim" ids=""]
+ * [apuracao_candidatos_lista cargo="presidente" uf="" limite="10" foto="sim" ids="" layout="carrossel" titulo="" link="" link_texto="" kicker=""]
  */
 final class AE_Candidate_List {
 	private const DEFAULT_LIMIT = 10;
@@ -13,12 +14,13 @@ final class AE_Candidate_List {
 
 	public static function render( array $atts = array() ): string {
 		global $wpdb;
-		$a = shortcode_atts( array( 'cargo' => '', 'uf' => '', 'limite' => self::DEFAULT_LIMIT, 'foto' => 'sim', 'ids' => '' ), $atts, 'apuracao_candidatos_lista' );
+		$a = shortcode_atts( array( 'cargo' => '', 'uf' => '', 'limite' => self::DEFAULT_LIMIT, 'foto' => 'sim', 'ids' => '', 'layout' => 'carrossel', 'kicker' => null, 'titulo' => 'Acompanhe por candidato', 'link' => null, 'link_texto' => 'Ver apuração' ), $atts, 'apuracao_candidatos_lista' );
 		$p = $wpdb->prefix . 'ae_';
 
 		$limit = max( 1, min( self::MAX_LIMIT, absint( $a['limite'] ) ?: self::DEFAULT_LIMIT ) );
 		$photo = strtolower( sanitize_key( $a['foto'] ) );
 		$photo = in_array( $photo, array( 'nao', 'somente' ), true ) ? $photo : 'sim';
+		$strip = 'lista' !== strtolower( sanitize_key( $a['layout'] ) );
 		$ids   = array_values( array_unique( array_filter( array_map( 'sanitize_text_field', explode( ',', (string) $a['ids'] ) ), 'strlen' ) ) );
 		$ids   = array_map( 'trim', $ids );
 
@@ -45,18 +47,62 @@ final class AE_Candidate_List {
 		if ( ! $rows ) { return self::empty_notice( 'Nenhum candidato encontrado para esse filtro.' ); }
 
 		$base = self::profile_base();
-		ob_start(); ?>
+		ob_start();
+		if ( $strip ) {
+			self::enqueue();
+			$kicker = null === $a['kicker'] ? 'Eleições ' . $year : (string) $a['kicker'];
+			$link   = null === $a['link'] ? self::results_url() : (string) $a['link'];
+			?>
+<section class="ae-strip" aria-label="<?php echo esc_attr( $a['titulo'] ?: 'Candidatos' ); ?>">
+	<header class="ae-strip-head">
+		<?php if ( '' !== $kicker ) : ?><p class="ae-strip-kicker"><?php echo esc_html( $kicker ); ?></p><?php endif; ?>
+		<?php if ( '' !== (string) $a['titulo'] ) : ?><h2 class="ae-strip-title"><?php echo esc_html( $a['titulo'] ); ?></h2><?php endif; ?>
+		<?php if ( '' !== $link && '' !== (string) $a['link_texto'] ) : ?><a class="ae-strip-link" href="<?php echo esc_url( $link ); ?>"><?php echo esc_html( $a['link_texto'] ); ?></a><?php endif; ?>
+	</header>
+	<div class="ae-strip-body">
+<?php
+		}
+		?>
 <ul class="ae-candidate-list">
 <?php foreach ( $rows as $row ) :
 	$name  = AE_Candidate_Catalog::clean_value( $row['ballot_name'] ) ?: AE_Candidate_Catalog::clean_value( $row['full_name'] );
 	$party = AE_Candidate_Catalog::clean_value( $row['party'] );
 	$url   = add_query_arg( 'ae_candidato', rawurlencode( $row['external_id'] ), $base );
 	?>
-	<li class="ae-candidate-item" data-numero="<?php echo esc_attr( $row['ballot_number'] ); ?>" data-partido="<?php echo esc_attr( $party ); ?>" data-cargo="<?php echo esc_attr( (string) $row['position_code'] ); ?>" data-uf="<?php echo esc_attr( (string) $row['scope_code'] ); ?>"><a class="ae-candidate-link" href="<?php echo esc_url( $url ); ?>"><?php if ( 'nao' !== $photo && $row['photo_url'] ) : ?><img class="ae-candidate-photo" src="<?php echo esc_url( $row['photo_url'] ); ?>" alt="" loading="lazy"><?php endif; ?><span class="ae-candidate-name"><?php echo esc_html( $name ); ?></span></a></li>
+	<li class="ae-candidate-item" data-numero="<?php echo esc_attr( $row['ballot_number'] ); ?>" data-partido="<?php echo esc_attr( $party ); ?>" data-cargo="<?php echo esc_attr( (string) $row['position_code'] ); ?>" data-uf="<?php echo esc_attr( (string) $row['scope_code'] ); ?>"><a class="ae-candidate-link" href="<?php echo esc_url( $url ); ?>"><?php if ( 'nao' !== $photo && $row['photo_url'] ) : ?><img class="ae-candidate-photo" src="<?php echo esc_url( $row['photo_url'] ); ?>" alt="" loading="lazy"><?php endif; ?><span class="ae-candidate-text"><span class="ae-candidate-role"><?php echo esc_html( self::position_label( (string) $row['position_code'] ) ); ?></span><span class="ae-candidate-name"><?php echo esc_html( $name ); ?></span></span></a></li>
 <?php endforeach; ?>
 </ul>
 <?php
+		if ( $strip ) {
+			?>
+	</div>
+	<div class="ae-strip-nav" hidden>
+		<button type="button" class="ae-strip-prev" aria-label="Anteriores">&#8249;</button>
+		<button type="button" class="ae-strip-next" aria-label="Próximos">&#8250;</button>
+	</div>
+</section>
+<?php
+		}
 		return (string) ob_get_clean();
+	}
+
+	/** CSS e JS do carrossel: só quando a faixa aparece (o JS vai ao rodapé). Sem JS, a faixa ainda rola com o dedo/mouse. */
+	private static function enqueue(): void {
+		wp_enqueue_style( 'ae-candidate-strip', AE_URL . 'assets/css/ae-candidate-strip.css', array(), AE_VERSION );
+		wp_enqueue_script( 'ae-candidate-strip', AE_URL . 'assets/js/ae-candidate-strip.js', array(), AE_VERSION, true );
+	}
+
+	/** Link padrão da faixa: a página de Apuração escolhida em Configuração (a mesma do [apuracao_navegacao]); '' sem ela. */
+	private static function results_url(): string {
+		$page_id = (int) get_option( AE_Navigation::OPTION_RESULTS );
+		$url     = $page_id ? get_permalink( $page_id ) : '';
+		return $url ? $url : '';
+	}
+
+	/** "0003" → "Governador", "0006" → "Deputado Federal" (a partir de TSE_API::CARGOS). */
+	private static function position_label( string $code ): string {
+		$slug = array_search( (string) absint( $code ), array_map( 'strval', TSE_API::CARGOS ), true );
+		return false === $slug ? 'Candidato' : ucwords( str_replace( '-', ' ', (string) $slug ) );
 	}
 
 	/** '' = todos os cargos; null = valor informado que não é um cargo. Aceita slug (presidente) ou código (1, 0001). */
