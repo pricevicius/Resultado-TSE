@@ -36,6 +36,19 @@ foreach ( array( 'overview', 'setup', 'selecao', 'import', 'jobs', 'logs', 'shor
 	$check( "aba {$tab} renderiza", '' !== $html && '' === $wpdb->last_error, $wpdb->last_error );
 }
 
+// Requisito php-zip: ativação recusada e aviso permanente quando falta.
+$check( 'requisitos: sem pendência quando há ZipArchive ou a dispensa por constante', ( class_exists( 'ZipArchive' ) || ( defined( 'TSE_APURACAO_ALLOW_NO_ZIP' ) && TSE_APURACAO_ALLOW_NO_ZIP ) ) === ( array() === AE_Plugin::missing_requirements() ) );
+$force = static function ( array $m ) { return array( 'a extensão PHP zip (teste)' ); };
+add_filter( 'ae_missing_requirements', $force );
+$check( 'requisitos: o filtro consegue declarar requisito ausente', array( 'a extensão PHP zip (teste)' ) === AE_Plugin::missing_requirements() );
+foreach ( array( 'overview', 'selecao', 'import' ) as $tab ) {
+	$check( "requisitos: aviso permanente aparece na aba {$tab}", false !== strpos( $render( $tab ), 'Requisito do servidor ausente' ) );
+}
+$health_missing = rest_do_request( new WP_REST_Request( 'GET', '/apuracao/v1/admin/health' ) )->get_data();
+$check( 'requisitos: REST de saúde lista o requisito ausente', array( 'a extensão PHP zip (teste)' ) === ( $health_missing['missing_requirements'] ?? null ) );
+remove_filter( 'ae_missing_requirements', $force );
+$check( 'requisitos: sem o filtro o aviso some (se o ambiente tem a extensão)', ! class_exists( 'ZipArchive' ) || false === strpos( $render( 'overview' ), 'Requisito do servidor ausente' ) );
+
 // A7: tabelas InnoDB.
 $check( 'non_innodb_tables vazio quando tudo é InnoDB', array() === AE_Schema::non_innodb_tables(), implode( ',', AE_Schema::non_innodb_tables() ) );
 $check( 'aviso de InnoDB ausente na Visão geral', false === strpos( $render( 'overview' ), 'Tabelas fora do InnoDB' ) );

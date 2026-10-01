@@ -4,7 +4,7 @@
 
 Este é o runbook técnico e funcional do plugin. Ele registra o que foi implementado, o que foi decidido e o que ainda está planejado. Toda mudança que altere fonte, contrato JSON, frequência, cache, fila, interface administrativa ou publicação deve atualizar este arquivo.
 
-Última revisão: 01/10/2026 (versão 2.5.0). Desde 28/09: saúde do disparo da coleta (2.3.8), marcadores `#NE` e vínculo do candidato com a disputa (2.3.8), intervalo por tipo de disputa, Slack removido e snapshot em transação (2.4.0), paginação do catálogo (2.4.1), candidatos que saem do CSV, reimportação agendada, avisos de saúde, gravação do snapshot em lote e testes em WordPress real (2.5.0).
+Última revisão: 01/10/2026 (versão 2.5.1, que torna a extensão `php-zip` requisito de ativação). Desde 28/09: saúde do disparo da coleta (2.3.8), marcadores `#NE` e vínculo do candidato com a disputa (2.3.8), intervalo por tipo de disputa, Slack removido e snapshot em transação (2.4.0), paginação do catálogo (2.4.1), candidatos que saem do CSV, reimportação agendada, avisos de saúde, gravação do snapshot em lote e testes em WordPress real (2.5.0).
 
 **O que ainda está em aberto** (código, validação parcial, implantação por projeto e decisões já tomadas) está em [PENDENCIAS.md](PENDENCIAS.md).
 
@@ -128,7 +128,7 @@ O botão deriva o ano da eleição e usa o pacote oficial `consulta_cand_{ANO}.z
 - **vincula o candidato à disputa** (`ae_candidates.contest_id`) por cargo + UF + turno do CSV, na própria importação (Presidente é `BR`; Deputado Distrital é a disputa `0008` do DF). Com isso os filtros de cargo e UF do catálogo funcionam antes de a apuração começar. Reimportar preenche os candidatos já existentes, e a importação nunca apaga um vínculo que o EA20 já tenha gravado;
 - permite que o EA20 complete candidatos ausentes e derive a foto oficial por `sqcand`.
 
-**Dependência de ambiente:** requer a extensão `php-zip` (`ZipArchive`). Confirmar no `docker/Dockerfile` local (`php8.2-zip`) e em homolog/produção antes de usar.
+**Dependência de ambiente (requisito de instalação, desde a 2.5.1):** requer a extensão `php-zip` (`ZipArchive`). A ativação do plugin é **recusada** com uma mensagem explicando o que instalar (`AE_Plugin::missing_requirements()`, chamada pelo hook de ativação); se a extensão desaparecer depois, as telas do admin mostram um aviso permanente e a REST de saúde lista `missing_requirements`. Para desenvolvimento ou teste, `TSE_APURACAO_ALLOW_NO_ZIP` no `wp-config.php` (ou o filtro `ae_missing_requirements`) dispensa a verificação. Confirmar no `docker/Dockerfile` local (`php8.2-zip`) e em homolog/produção.
 
 **Resiliência:** o nome/partido/número de cada candidato também é gravado direto em `ae_result_rows` no momento da coleta (não só via `candidate_id` em `ae_candidates`) — se o cadastro de candidatos ainda não existir ou estiver temporariamente fora de sincronia com o resultado, a tela mostra o nome capturado no snapshot em vez de cair para o ID numérico do TSE.
 
@@ -663,8 +663,8 @@ banco, sempre frescos). Duas causas distintas, ambas endereçadas:
 - uma resposta 304 registra a última consulta bem-sucedida. Assim, durante uma
   parcial estável, a interface não apresenta “Dados atrasados” apenas porque o
   snapshot não mudou;
-- a saúde REST informa se `ZipArchive` está disponível. A importação de CSVs em
-  ZIP requer `php-zip` no ambiente.
+- a saúde REST informa se `ZipArchive` está disponível (`zip_available`) e lista `missing_requirements`. A importação de CSVs em
+  ZIP requer `php-zip` no ambiente, e desde a 2.5.1 sem ela o plugin nem ativa.
 
 ## Saúde do disparo da coleta — versão 2.3.8
 
