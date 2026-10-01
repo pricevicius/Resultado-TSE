@@ -926,6 +926,22 @@ Docker local, sem rede, sem concorrência: coleta de Deputado Federal com 1.100 
 nome ~200 ms; páginas muito profundas sem filtro ~500 ms. Isso é latência local: em produção o banco tem
 latência de rede, e é por isso que o número de queries importa mais que os milissegundos.
 
+## Versões de PHP e de WordPress (2.5.0)
+
+| Branch | PHP | WordPress | Observação |
+| --- | --- | --- | --- |
+| `main` | 8.1+ | 5.5+ recomendado | código-fonte de referência |
+| `php7.4` | 7.4+ | idem | mesmos commits da `main` |
+| `php7.2` | **7.2+** | **4.9+** | gerada da `php7.4` por `tools/port-php72.py`; release `v2.5.0-php7.2` |
+
+O plugin não depende da versão do WordPress: `includes/compat.php` define `str_contains`, `str_starts_with`,
+`str_ends_with` e `wp_date()` quando não existem, e o bloco Gutenberg só é registrado quando o WordPress o
+suporta (5.5+); nas versões antigas o shortcode `[tse_apuracao]` (e os demais) cobre o mesmo uso. Validado em
+PHP 7.2.12 + WordPress 4.9.8 (front com todos os shortcodes, telas do admin autenticadas, REST e as suítes de
+`tests/`), PHP 7.2.34 + WordPress 5.6, PHP 7.4.33 + WordPress 6.1 e PHP 8.2 + WordPress atual. PHP 7.2 e 7.3
+estão sem correção de segurança: a variante existe para projetos que ainda não conseguiram migrar. Como
+regenerar a `php7.2` está em [PENDENCIAS.md](PENDENCIAS.md) (seção E).
+
 ## Repositório — código movido para submódulo (22/09/2026)
 
 O plugin deixou de viver dentro dos monorepos de site. Fonte de verdade agora é
