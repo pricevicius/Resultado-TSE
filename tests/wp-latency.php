@@ -100,7 +100,16 @@ try {
 	// 4) AE_Perf gravou amostras de download durante os testes.
 	$summary = AE_Perf::summary();
 	$check( 'AE_Perf: o download do TSE foi medido (amostras, média, p95 e máximo)', isset( $summary['fetch'] ) && $summary['fetch']['count'] >= 8 && $summary['fetch']['max_ms'] >= 100 && $summary['fetch']['p95_ms'] >= $summary['fetch']['avg_ms'], wp_json_encode( $summary['fetch'] ?? null ) );
-	$check( 'AE_Perf: o job de coleta foi medido', isset( $summary['job'] ) && $summary['job']['count'] >= 8 );
+	// O tempo do job só é gravado quando a coleta passa pelo worker: enfileira duas e drena pelo runner (sem tick, que enfileiraria outras disputas do banco).
+	$revision++;
+	foreach ( array_slice( $light_ids, 0, 2 ) as $id ) { AE_Job_Runner::enqueue( 'collect_results', array( 'contest_id' => $id, 'kind' => 'EA20', 'source_url' => $contests[ $id ] ) ); }
+	$runner = AE_Job_Runner::instance();
+	foreach ( array( 'acquire_lock', 'drain', 'release_lock' ) as $m ) { $methods[ $m ] = new ReflectionMethod( $runner, $m ); $methods[ $m ]->setAccessible( true ); }
+	$ran = 0;
+	if ( $methods['acquire_lock']->invoke( $runner ) ) { try { $ran = (int) $methods['drain']->invoke( $runner, 20 ); } finally { $methods['release_lock']->invoke( $runner ); } }
+	$samples = (array) get_option( 'ae_perf_samples', array() );
+	$last_kinds = array_slice( array_column( $samples, 'k' ), -4 );
+	$check( 'AE_Perf: o job de coleta executado pelo worker foi medido (2 jobs, 2 amostras "job")', 2 === $ran && 2 === count( array_keys( $last_kinds, 'job', true ) ), $ran . ' ' . wp_json_encode( $last_kinds ) );
 	$check( 'AE_Perf: a REST de saúde e a Visão geral expõem as medidas', isset( rest_do_request( new WP_REST_Request( 'GET', '/apuracao/v1/admin/health' ) )->get_data()['perf'] ) || 401 === rest_do_request( new WP_REST_Request( 'GET', '/apuracao/v1/admin/health' ) )->get_status() );
 } finally {
 	remove_all_filters( 'pre_http_request' );
@@ -113,6 +122,7 @@ try {
 	$wpdb->delete( $p . 'candidates', array( 'election_id' => $eid ) );
 	$wpdb->delete( $p . 'contests', array( 'election_id' => $eid ) );
 	$wpdb->delete( $p . 'elections', array( 'id' => $eid ) );
+	if ( $contests ) { $wpdb->query( "DELETE FROM {$p}jobs WHERE type='collect_results' AND payload_json REGEXP '\"contest_id\":(" . implode( '|', array_keys( $contests ) ) . ")[,}]'" ); } // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	foreach ( array_keys( $urls ) as $u ) { delete_option( 'ae_tse_http_' . md5( $u ) ); }
 	foreach ( $saved as $name => $value ) { null === $value ? delete_option( $name ) : update_option( $name, $value, false ); }
 }

@@ -22,7 +22,8 @@ docker network create "$NAME" >/dev/null
 docker run -d --name "$NAME-db" --network "$NAME" -e MARIADB_ROOT_PASSWORD=root -e MARIADB_DATABASE=wp mariadb:10.11 >/dev/null
 docker run -d --name "$NAME-wp" --network "$NAME" -e WORDPRESS_DB_HOST="$NAME-db" -e WORDPRESS_DB_USER=root -e WORDPRESS_DB_PASSWORD=root -e WORDPRESS_DB_NAME=wp \
 	-v "$PLUGIN":/var/www/html/wp-content/plugins/tse-apuracao:ro "$IMAGE" >/dev/null
-for i in $(seq 1 60); do docker exec "$NAME-db" mariadb-admin ping -uroot -proot --silent >/dev/null 2>&1 && break; sleep 2; done
+# O MariaDB sobe duas vezes (servidor temporário de inicialização, depois o definitivo): espera o segundo "ready for connections".
+for i in $(seq 1 90); do [ "$(docker logs "$NAME-db" 2>&1 | grep -c "ready for connections")" -ge 2 ] && break; sleep 2; done
 for i in $(seq 1 60); do docker exec "$NAME-wp" test -f /var/www/html/wp-config.php >/dev/null 2>&1 && break; sleep 1; done
 WP="docker exec $NAME-wp wp --allow-root --path=/var/www/html"
 docker exec "$NAME-wp" sh -c 'curl -sSL -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && chmod +x /usr/local/bin/wp'
