@@ -1029,6 +1029,12 @@ PHP 7.2.12 + WordPress 4.9.8 (front com todos os shortcodes, telas do admin aute
 estão sem correção de segurança: a variante existe para projetos que ainda não conseguiram migrar. Como
 regenerar a `php7.2` (`tools/regen-php72.sh`, sem reescrever o histórico) está em [PENDENCIAS.md](PENDENCIAS.md) (seção E).
 
+**Rodada da 2.6.0 (`tests/run-matrix.sh`, containers descartáveis com MariaDB próprio, `php-zip` incluído nas imagens oficiais):**
+`admin-smoke`, `wp-integration`, `wp-collect`, `wp-latency` e `wp-import-zip` passaram em **PHP 7.4.33 + WordPress 6.1.1**,
+**PHP 7.2.34 + WordPress 5.6** e **PHP 7.2.12 + WordPress 4.9.8** (a `php7.2` gerada por `tools/regen-php72.sh`). Em PHP 8.2 (site
+local) passaram também `http-admin.sh` e `run-concurrency.sh`. O custo local por coleta ficou na mesma ordem nas três
+versões (leve 48–62 ms, pesada de 1.100 candidatos 160–290 ms).
+
 ## Repositório — código movido para submódulo (22/09/2026)
 
 O plugin deixou de viver dentro dos monorepos de site. Fonte de verdade agora é
