@@ -15,6 +15,7 @@
 .ae-strip .ae-candidate-text{display:flex;flex-direction:column;gap:2px;line-height:1.2}
 .ae-strip .ae-candidate-role{color:var(--ae-strip-muted);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
 .ae-strip .ae-candidate-name{font-size:16px;font-weight:700;white-space:nowrap}
+.ae-strip .ae-candidate-votes{color:var(--ae-strip-fg);font-size:13px;font-variant-numeric:tabular-nums}
 .ae-strip .ae-candidate-party{align-self:flex-start;padding:1px 7px;background:var(--ae-strip-bg);color:var(--ae-strip-accent);font-size:11px;font-weight:700}
 .ae-strip-nav{flex:0 0 auto;display:flex;gap:8px}
 .ae-strip-nav[hidden]{display:none}
