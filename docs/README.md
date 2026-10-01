@@ -25,4 +25,4 @@
 5. **Detalhe de projeto não é pendência do plugin.** Ponteiro de submódulo, `Dockerfile` do site, CDN escolhida: `PENDENCIAS.md` seção C (checklist por projeto), nunca em `arquitetura.md`.
 6. **Números têm data e ambiente.** Toda medição diz onde foi feita (versão, PHP, Docker local ou produção) e fica em `versoes.md`.
 
-Estado atual: versão **2.6.0**.
+Estado atual: versão **2.6.1**.

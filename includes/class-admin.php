@@ -11,6 +11,12 @@ final class AE_Admin {
 		add_action( 'admin_enqueue_scripts', array( $this, 'assets' ) );
 		foreach ( array( 'sync_tse', 'quick_setup', 'save_contest', 'start_import', 'retry_job', 'run_jobs', 'save_sync_selection', 'wipe_test_data', 'save_pages', 'save_auto_import' ) as $action ) { add_action( 'admin_post_ae_' . $action, array( $this, $action ) ); }
 		add_action( 'wp_ajax_ae_admin_status', array( $this, 'ajax_status' ) );
+		// Tela do plugin aberta = alguém acompanhando: a fila anda mesmo sem WP-Cron (admin não passa por cache de página).
+		if ( 'GET' === ( $_SERVER['REQUEST_METHOD'] ?? '' ) && self::PAGE === sanitize_key( wp_unslash( $_GET['page'] ?? '' ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			add_action( 'shutdown', static function (): void {
+				try { AE_Job_Runner::instance()->kick(); } catch ( Throwable $e ) { /* Best-effort; o tick agendado cobre. */ }
+			} );
+		}
 	}
 
 	public function menu(): void { add_menu_page( 'Apuração Eleitoral', 'Apuração', 'manage_options', self::PAGE, array( $this, 'page' ), 'dashicons-chart-bar', 58 ); }
@@ -253,6 +259,8 @@ final class AE_Admin {
 		// O conjunto de UFs ligadas pode ter mudado: recalcula o intervalo das disputas em modo automático.
 		AE_Collection_Policy::apply_all();
 		AE_Logger::write( 'info', 'sync_selection_saved', array( 'total' => count( $ids ), 'enabled' => count( $enabled_ids ) ) );
+		// A coleta começa agora, sem depender do WP-Cron (que em vários ambientes nunca dispara).
+		AE_Job_Runner::instance()->run_now();
 		$this->redirect( 'selecao', 'Seleção salva: ' . count( $enabled_ids ) . ' de ' . count( $ids ) . ' disputas sincronizando automaticamente.' );
 	}
 
@@ -291,6 +299,7 @@ final class AE_Admin {
 		$payload = array( 'environment' => $environment, 'year' => $year );
 		if ( $uf ) { $payload['site_uf'] = $uf; }
 		$id = AE_Job_Runner::enqueue( 'sync_tse', $payload );
+		AE_Job_Runner::instance()->run_now();
 		$this->redirect( 'jobs', 'Sincronização oficial adicionada à fila' . ( $uf ? " (UF: {$uf})" : ' (⚠️ sem UF — disputas novas nascem todas ligadas)' ) . '. Job #' . $id . '.' );
 	}
 
@@ -335,6 +344,11 @@ final class AE_Admin {
 		$tick = AE_Job_Runner::tick_status();
 		if ( $tick['enabled_contests'] < 1 ) { return; }
 		$style = 'border-left:4px solid #d63638;padding:1px 12px;margin:12px 0;';
+		$loopback = AE_Job_Runner::loopback_status();
+		if ( ! $loopback['ok'] ) {
+			$line = '* * * * * cd ' . untrailingslashit( ABSPATH ) . ' && wp cron event run --due-now >/dev/null 2>&1';
+			echo '<div class="notice notice-warning inline" style="' . esc_attr( $style ) . '"><p><strong>O servidor não consegue acessar o próprio endereço</strong> (' . esc_html( $loopback['error'] ) . '), então o WP-Cron do WordPress não dispara. O plugin compensa processando a fila quando esta tela ou o site são abertos e a cada ação de salvar/sincronizar, mas, para coletar continuamente sem ninguém olhando, agende um cron de sistema: <code>' . esc_html( $line ) . '</code></p></div>';
+		}
 		$how = 'Para coletar sem depender de visitas, agende o cron de sistema com bin/tse-tick-loop.sh e declare TSE_APURACAO_CONTAINER (se usar Docker), TSE_APURACAO_PLUGIN_PATH e TSE_APURACAO_LOG_FILE dentro do próprio crontab — o crontab não herda variáveis do shell.';
 		if ( $tick['stale'] ) {
 			echo '<div class="notice notice-error inline" style="' . esc_attr( $style ) . '"><p><strong>Coleta parada:</strong> o processador não roda ' . esc_html( $this->short_age( (int) $tick['age'] ) ) . '. Com disputas ligadas, os resultados publicados ficam congelados. ' . esc_html( $how ) . '</p></div>';

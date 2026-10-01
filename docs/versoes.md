@@ -2,6 +2,29 @@
 
 O que mudou em cada versão e por quê, da mais nova para a mais antiga. Comportamento permanente fica em [arquitetura.md](arquitetura.md); como validar, em [testes.md](testes.md). O que ainda está em aberto, em [../PENDENCIAS.md](../PENDENCIAS.md).
 
+## Versão 2.6.1 — a coleta arranca sem WP-Cron
+
+**Problema.** Em homologação (e em qualquer servidor que não consegue chamar o próprio endereço público, por NAT/hairpin) o
+WP-Cron nunca dispara: `wp cron test` dá *spawn failed: Connection timed out*. O plano B do plugin, `AE_Job_Runner::kick()`
+(chamado no `shutdown` do REST e do shortcode), só **drenava jobs que já existiam**. Quem cria os jobs `collect_results` é
+`enqueue_due_collections()`, que só o `tick()` chamava. Resultado: seleção salva, fila vazia, `kick()` saindo cedo e nenhuma
+coleta, até alguém rodar o cron na mão (aconteceu no revistaforum e no eptv).
+
+**Correção.**
+- `kick()` com fila vazia também enfileira as coletas devidas (`enqueue_due_collections()`), no máximo a cada 15 s
+  (`ae_last_kick_enqueue_at`) para não consultar `ae_contests` a cada visita, com o mesmo lock e o mesmo breaker do TSE.
+- **Salvar a Seleção** e **Sincronizar** passam a rodar o worker na hora (`AE_Job_Runner::run_now()`, até 20 s, sem derrubar a
+  ação se falhar): a coleta começa no clique, sem esperar o cron. `tick()` ganhou o parâmetro opcional de orçamento (padrão 40 s,
+  inalterado para WP-Cron e CLI).
+- A tela do plugin aberta (GET, só admin) também chama o `kick()` no `shutdown`; o admin não passa por cache de página.
+- **Diagnóstico:** a Visão geral testa uma requisição ao próprio `rest_url()` (cache de 10 min, `ae_loopback_status`) e, se
+  falhar, avisa que o WP-Cron não dispara e mostra a linha de cron de sistema pronta (`wp cron event run --due-now`).
+
+**O que não muda.** Para coletar continuamente sem ninguém olhando o site (dia da apuração), o cron de sistema
+(`bin/tse-tick-loop.sh` ou a linha acima) continua sendo o recomendado; o `kick()` é o piso, não a substituição.
+
+Teste: `tests/wp-kick.php` (K1–K8). K2 e K3 falham no código da 2.6.0 e passam na 2.6.1.
+
 ## Versão 2.6.0 — turnos, medição da coleta e testes de carga
 
 **Esquema 2.1.0.** Nova tabela `ae_candidate_contests (candidate_id, contest_id)`, com chave primária nos dois campos. O
