@@ -34,6 +34,14 @@ Não é necessário informar URL, código de pleito ou código de eleição. O p
 
 Lista os candidatos importados, com busca por nome/número e filtros de cargo, UF e partido. É **paginado**: 24 por página por padrão, com "Anterior / 1 2 3 … / Próxima" abaixo da lista. Ao buscar ou trocar de página, o navegador desce direto para a lista. Quando o resultado cabe numa página só, a navegação não aparece. Se a paginação não aparecer, veja "Catálogo de candidatos: paginação" na documentação completa.
 
+## Lista de candidatos para vitrine
+
+```text
+[apuracao_candidatos_lista cargo="presidente" limite="10" foto="sim"]
+```
+
+Devolve só `<ul class="ae-candidate-list">` com um `<li class="ae-candidate-item">` por candidato (link para o perfil, foto opcional e nome), sem CSS nem JavaScript do plugin: título, botão e carrossel ficam com o tema. Atributos: `cargo`, `uf`, `limite` (1 a 100, padrão 10), `foto` (`sim`, `nao` ou `somente`) e `ids` (identificadores do TSE, define a ordem).
+
 ## Cargos do shortcode
 
 `presidente`, `governador`, `senador`, `deputado-federal`, `deputado-estadual`, `deputado-distrital`, `prefeito` e `vereador`.
