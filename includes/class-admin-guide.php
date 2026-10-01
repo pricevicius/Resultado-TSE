@@ -40,6 +40,7 @@ final class AE_Admin_Guide {
 				<tr><td>Um bloco simples para a home, com várias disputas numa só caixa</td><td><?php self::inline( '[tse_apuracao_resumo disputas="presidente:br,governador:' . $uf . '"]' ); ?></td></tr>
 				<tr><td>Um card compacto com o líder (para a home ou grades)</td><td><?php self::inline( '[tse_apuracao_card cargo="governador" uf="' . $uf . '"]' ); ?></td></tr>
 				<tr><td>Uma página de consulta de candidatos, com busca e paginação</td><td><?php self::inline( '[apuracao_candidatos]' ); ?></td></tr>
+				<tr><td>Uma lista de candidatos (<code>&lt;ul&gt;&lt;li&gt;</code>) para o tema montar vitrine ou carrossel</td><td><?php self::inline( '[apuracao_candidatos_lista cargo="presidente" limite="10"]' ); ?></td></tr>
 				<tr><td>Um menu entre a página de Apuração e a de Candidatos</td><td><?php self::inline( '[apuracao_navegacao]' ); ?></td></tr>
 			</tbody></table>
 		</section>
@@ -126,6 +127,23 @@ final class AE_Admin_Guide {
 			</tbody></table>
 			<p class="description">Combine com <code>&amp;</code>, por exemplo <code>?ae_cargo=0006&amp;ae_uf=<?php echo esc_html( strtoupper( $uf ) ); ?>&amp;ae_pagina=2</code>. Códigos de cargo: 0001 Presidente, 0003 Governador, 0005 Senador, 0006 Deputado Federal, 0007 Deputado Estadual, 0008 Deputado Distrital.</p>
 			<p class="description"><code>[apuracao_candidato]</code> mostra o perfil de um candidato quando o endereço traz <code>ae_candidato</code>. Você normalmente não precisa dele: o catálogo já abre o perfil sozinho.</p>
+		</section>
+
+		<section class="ae-panel">
+			<h2><code>[apuracao_candidatos_lista]</code> — lista de candidatos para vitrine</h2>
+			<p>Devolve só o HTML de uma lista (<code>&lt;ul class="ae-candidate-list"&gt;</code> com um <code>&lt;li class="ae-candidate-item"&gt;</code> por candidato), sem título, sem CSS e sem JavaScript do plugin: título, botão e carrossel ficam por conta do tema. Usa a eleição mais recente importada e ignora candidatos que saíram da lista do TSE.</p>
+			<table class="widefat striped"><thead><tr><th>Atributo</th><th>O que faz</th><th>Padrão</th><th>Valores</th></tr></thead><tbody>
+				<tr><td><code>cargo</code></td><td>Filtra pelo cargo</td><td>todos</td><td>os mesmos cargos da tabela abaixo (<code>presidente</code>, <code>governador</code>…)</td></tr>
+				<tr><td><code>uf</code></td><td>Filtra pelo estado</td><td>todos</td><td>sigla, como <code>SP</code> (<code>BR</code> para presidente)</td></tr>
+				<tr><td><code>limite</code></td><td>Quantos candidatos</td><td><code>10</code></td><td>de 1 a 100</td></tr>
+				<tr><td><code>foto</code></td><td>Foto do candidato</td><td><code>sim</code></td><td><code>sim</code> mostra a foto quando existe; <code>nao</code> omite a foto; <code>somente</code> lista só quem tem foto</td></tr>
+				<tr><td><code>ids</code></td><td>Escolhe os candidatos e a ordem</td><td>ordem alfabética</td><td>identificadores do TSE separados por vírgula (os mesmos de <code>?ae_candidato=</code>)</td></tr>
+			</tbody></table>
+			<?php
+			self::example( 'Presidenciáveis com foto', '[apuracao_candidatos_lista cargo="presidente" limite="10"]' );
+			self::example( 'Governadores de um estado, sem foto', '[apuracao_candidatos_lista cargo="governador" uf="' . $uf . '" foto="nao"]' );
+			?>
+			<p class="description">Cada item traz <code>data-numero</code>, <code>data-partido</code>, <code>data-cargo</code> e <code>data-uf</code>, e leva ao perfil na página de Candidatos escolhida em Configuração.</p>
 		</section>
 
 		<section class="ae-panel">

@@ -98,7 +98,7 @@ $check( 'disabled_in_site_uf: sem UF não avisa', array() === AE_Collection_Poli
 
 // Manual do admin (aba "Como usar"): não pode divergir do código.
 $guide = $render( 'shortcodes' );
-$registered = array( 'tse_apuracao', 'tse_apuracao_card', 'tse_apuracao_resumo', 'apuracao', 'apuracao_candidato', 'apuracao_candidatos', 'apuracao_navegacao' );
+$registered = array( 'tse_apuracao', 'tse_apuracao_card', 'tse_apuracao_resumo', 'apuracao', 'apuracao_candidato', 'apuracao_candidatos', 'apuracao_candidatos_lista', 'apuracao_navegacao' );
 $missing = array_filter( $registered, static function ( string $tag ) use ( $guide ): bool { return ! shortcode_exists( $tag ) || false === strpos( $guide, '[' . $tag ); });
 $check( 'manual: todo shortcode registrado está documentado', ! $missing, implode( ',', $missing ) );
 $slugs_missing = array_filter( array_keys( TSE_API::CARGOS ), static function ( string $slug ) use ( $guide ): bool { return false === strpos( $guide, '<code>' . $slug . '</code>' ); });

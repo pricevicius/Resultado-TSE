@@ -8,6 +8,7 @@ final class AE_Shortcodes {
 		add_shortcode( 'apuracao', array( $this, 'render' ) );
 		add_shortcode( 'apuracao_candidato', array( $this, 'candidate' ) );
 		add_shortcode( 'apuracao_candidatos', array( $this, 'catalog' ) );
+		add_shortcode( 'apuracao_candidatos_lista', array( $this, 'candidate_list' ) );
 		add_shortcode( 'apuracao_navegacao', array( $this, 'navigation' ) );
 		add_shortcode( 'tse_apuracao_resumo', array( 'AE_Resumo', 'render' ) );
 	}
@@ -23,5 +24,6 @@ final class AE_Shortcodes {
 	}
 	public function candidate( $atts ): string { return AE_Candidate_Catalog::render( array() ); }
 	public function catalog( $atts ): string { return AE_Candidate_Catalog::render( is_array( $atts ) ? $atts : array() ); }
+	public function candidate_list( $atts ): string { return AE_Candidate_List::render( is_array( $atts ) ? $atts : array() ); }
 	public function navigation( $atts ): string { return AE_Navigation::shortcode(); }
 }
