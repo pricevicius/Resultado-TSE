@@ -676,6 +676,16 @@ saúde só mostrava o "próximo ciclo" do WP-Cron, que continuava aparecendo com
   stderr e sai com código 1, em vez de falhar a cada 15 s sem aviso. Cada falha de tick
   ganha uma linha com data e código de saída.
 
+### Marcadores do TSE nos dados de candidato (2.3.8)
+
+O CSV de candidatos preenche campos sem informação com marcadores como `#NE` (não
+divulgado) e `#NULO`, e a situação da candidatura pode vir `#NE` para todos. Isso não é
+dado para o leitor. `AE_Candidate_Catalog::clean_value()` devolve vazio para esses
+marcadores (`#` + letras maiúsculas): a importação não grava mais `#NE` em
+`ae_candidates.situation`, e a ficha do candidato não exibe esses valores nem os de
+`ae_candidates` já importados antes (a limpeza também ocorre na exibição, sem reimportar).
+Quando a situação fica vazia, a ficha mostra "Não informada".
+
 ## Repositório — código movido para submódulo (22/09/2026)
 
 O plugin deixou de viver dentro dos monorepos de site. Fonte de verdade agora é

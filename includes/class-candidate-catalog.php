@@ -3,6 +3,15 @@ defined( 'ABSPATH' ) || exit;
 
 /** Public, local-only candidate directory fed by TSE Dados Abertos and EA20 snapshots. */
 final class AE_Candidate_Catalog {
+	/**
+	 * O TSE preenche campos sem informação com marcadores como "#NE" (não divulgado) e "#NULO",
+	 * em vez de deixar vazio. Isso não é dado para o leitor: devolve '' para esses marcadores.
+	 */
+	public static function clean_value( $value ): string {
+		$value = trim( (string) $value );
+		return 1 === preg_match( '/^#[A-Z]{2,}$/', $value ) ? '' : $value;
+	}
+
 	public static function render( array $atts = array() ): string {
 		global $wpdb;
 		wp_enqueue_style( 'tse-apuracao', AE_URL . 'assets/css/tse-apuracao.css', array(), AE_VERSION );
@@ -32,8 +41,8 @@ final class AE_Candidate_Catalog {
 		global $wpdb; $p = $wpdb->prefix . 'ae_'; $row = $wpdb->get_row( $wpdb->prepare( "SELECT c.*,ct.position_name,ct.scope_code FROM {$p}candidates c LEFT JOIN {$p}contests ct ON ct.id=c.contest_id WHERE c.external_id=%s ORDER BY c.updated_at DESC LIMIT 1", $external ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		if ( ! $row ) { return '<p class="ae-catalog-empty">Candidato não encontrado.</p>'; }
 		$data = json_decode( (string) $row['data_json'], true ); $data = is_array( $data ) ? $data : array();
-		$personal = array_filter( array( 'Ocupação' => $data['DS_OCUPACAO'] ?? '', 'Data de nascimento' => $data['DT_NASCIMENTO'] ?? '', 'Escolaridade' => $data['DS_GRAU_INSTRUCAO'] ?? '', 'Estado civil' => $data['DS_ESTADO_CIVIL'] ?? '', 'Naturalidade' => trim( ( $data['NM_MUNICIPIO_NASCIMENTO'] ?? '' ) . ' ' . ( $data['SG_UF_NASCIMENTO'] ?? '' ) ) ) );
-		$application = array_filter( array( 'Nome completo' => $row['full_name'], 'Situação' => $row['situation'] ?: 'Não informada', 'Coligação' => $data['NM_COLIGACAO'] ?? '', 'Composição' => $data['DS_COMPOSICAO_COLIGACAO'] ?? '' ) );
+		$personal = array_filter( array_map( array( __CLASS__, 'clean_value' ), array( 'Ocupação' => $data['DS_OCUPACAO'] ?? '', 'Data de nascimento' => $data['DT_NASCIMENTO'] ?? '', 'Escolaridade' => $data['DS_GRAU_INSTRUCAO'] ?? '', 'Estado civil' => $data['DS_ESTADO_CIVIL'] ?? '', 'Naturalidade' => trim( self::clean_value( $data['NM_MUNICIPIO_NASCIMENTO'] ?? '' ) . ' ' . self::clean_value( $data['SG_UF_NASCIMENTO'] ?? '' ) ) ) ) );
+		$application = array_filter( array_map( array( __CLASS__, 'clean_value' ), array( 'Nome completo' => $row['full_name'], 'Situação' => self::clean_value( $row['situation'] ) ?: 'Não informada', 'Coligação' => $data['NM_COLIGACAO'] ?? '', 'Composição' => $data['DS_COMPOSICAO_COLIGACAO'] ?? '' ) ) );
 		ob_start(); ?><article class="ae-candidate-profile"><a href="<?php echo esc_url( $back ); ?>">← Voltar aos candidatos</a><header><?php if ( $row['photo_url'] ) : ?><img src="<?php echo esc_url( $row['photo_url'] ); ?>" alt=""><?php endif; ?><div><span><?php echo esc_html( $row['ballot_number'] ); ?></span><h1><?php echo esc_html( $row['ballot_name'] ?: $row['full_name'] ); ?></h1><p><?php echo esc_html( $row['party'] ); ?> · <?php echo esc_html( $row['position_name'] ); ?> · <?php echo esc_html( $row['scope_code'] ); ?></p></div></header><h2>Dados da candidatura</h2><dl><?php foreach ( $application as $label=>$value ) : ?><dt><?php echo esc_html( $label ); ?></dt><dd><?php echo esc_html( $value ); ?></dd><?php endforeach; ?></dl><?php if ( $personal ) : ?><h2>Dados pessoais</h2><dl><?php foreach ( $personal as $label=>$value ) : ?><dt><?php echo esc_html( $label ); ?></dt><dd><?php echo esc_html( $value ); ?></dd><?php endforeach; ?></dl><?php endif; ?></article><?php return (string) ob_get_clean();
 	}
 }
