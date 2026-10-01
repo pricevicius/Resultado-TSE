@@ -11,6 +11,10 @@ final class AE_Job_Runner {
 	/** Completed/failed jobs older than this are removed so the queue table doesn't need manual cleanup. */
 	private const JOB_RETENTION_DAYS = 30;
 	private const PURGE_MIN_INTERVAL = DAY_IN_SECONDS;
+	/** Sem nenhum tick por mais que isso, com disputas ligadas, a coleta é considerada parada. */
+	private const TICK_STALE_SECONDS = 300;
+	/** O cron de sistema dispara a cada minuto; passou disso sem tick de CLI, ele parou. */
+	private const CLI_TICK_STALE_SECONDS = 120;
 
 	public static function instance(): AE_Job_Runner { return self::$instance ??= new self(); }
 
@@ -25,7 +29,58 @@ final class AE_Job_Runner {
 		return (int) $wpdb->insert_id;
 	}
 
+	/**
+	 * Estado do disparo do worker, para a tela de saúde, a REST e o alerta do Slack.
+	 *
+	 * Dois sinais separados de propósito: o WP-Cron por tráfego mantém "algum tick" fresco
+	 * mesmo quando o cron de sistema (bin/tse-tick-loop.sh) morreu em silêncio, e é justamente
+	 * esse caso que precisa aparecer. Por isso o tick vindo de CLI é registrado à parte.
+	 *
+	 * @return array{last_tick_at:?int,age:?int,source:string,last_cli_tick_at:?int,cli_age:?int,enabled_contests:int,stale:bool,cli_stopped:bool,cli_never:bool}
+	 */
+	public static function tick_status(): array {
+		$last = (int) get_option( 'ae_last_tick_at', 0 );
+		$last_cli = (int) get_option( 'ae_last_cli_tick_at', 0 );
+		$age = $last ? time() - $last : null;
+		$cli_age = $last_cli ? time() - $last_cli : null;
+		$enabled = self::count_collecting_contests();
+		$limit = (int) apply_filters( 'ae_tick_stale_seconds', self::TICK_STALE_SECONDS );
+		$cli_limit = (int) apply_filters( 'ae_cli_tick_stale_seconds', self::CLI_TICK_STALE_SECONDS );
+		return array(
+			'last_tick_at'     => $last ?: null,
+			'age'              => $age,
+			'source'           => (string) get_option( 'ae_last_tick_source', '' ),
+			'last_cli_tick_at' => $last_cli ?: null,
+			'cli_age'          => $cli_age,
+			'enabled_contests' => $enabled,
+			// Nenhum tick (de qualquer origem) há tempo demais, com disputas ligadas para coletar.
+			'stale'            => $enabled > 0 && null !== $age && $age > $limit,
+			// O cron de sistema já funcionou neste site e parou: o caso silencioso que já aconteceu.
+			'cli_stopped'      => $enabled > 0 && null !== $cli_age && $cli_age > $cli_limit,
+			// Nunca houve tick de CLI: o site depende só do WP-Cron por tráfego.
+			'cli_never'        => $enabled > 0 && null === $cli_age,
+		);
+	}
+
+	/** Disputas que o worker de fato coleta (mesmo critério de enqueue_due_collections). */
+	private static function count_collecting_contests(): int {
+		global $wpdb;
+		$rows = $wpdb->get_col( "SELECT config_json FROM {$wpdb->prefix}ae_contests WHERE active=1 AND config_json IS NOT NULL" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$count = 0;
+		foreach ( $rows as $config_json ) {
+			$config = json_decode( (string) $config_json, true );
+			$collection = is_array( $config ) && is_array( $config['collection'] ?? null ) ? $config['collection'] : array();
+			if ( ! empty( $collection['enabled'] ) && ! empty( $collection['source_url'] ) ) { $count++; }
+		}
+		return $count;
+	}
+
 	public function tick(): void {
+		// Batimento registrado antes do lock: outro worker segurando o lock também prova que o disparo está vivo.
+		$is_cli = 'cli' === PHP_SAPI;
+		update_option( 'ae_last_tick_at', time(), false );
+		update_option( 'ae_last_tick_source', $is_cli ? 'cli' : 'web', false );
+		if ( $is_cli ) { update_option( 'ae_last_cli_tick_at', time(), false ); }
 		if ( ! $this->acquire_lock() ) { return; }
 		try {
 			// Do not create or retry a burst of jobs while the TSE circuit breaker is active.
