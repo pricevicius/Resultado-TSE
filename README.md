@@ -75,4 +75,4 @@ O que ainda está em aberto, o que foi validado só em parte e o checklist de im
 
 ## Documentação completa
 
-Leia [DOCUMENTACAO-PLUGIN-APURACAO.md](DOCUMENTACAO-PLUGIN-APURACAO.md) para arquitetura, fluxo de importação, contratos TSE, simulados, decisões, limitações e plano de mapas EA14/EA15.
+Índice e regras de organização em [docs/README.md](docs/README.md): [arquitetura](docs/arquitetura.md) (fontes do TSE, banco, importação, contratos), [operação](docs/operacao.md), [testes](docs/testes.md), [compatibilidade de PHP e WordPress](docs/compatibilidade.md) (inclui o suporte contínuo à `php7.2`), [histórico por versão](docs/versoes.md) e [planejado](docs/planejado.md). Registros datados de projeto (simulados, incidentes) ficam em [docs/historico/](docs/historico/).
