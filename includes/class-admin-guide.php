@@ -138,7 +138,8 @@ final class AE_Admin_Guide {
 				<tr><td><code>uf</code></td><td>Filtra pelo estado</td><td>todos</td><td>sigla, como <code>SP</code> (<code>BR</code> para presidente)</td></tr>
 				<tr><td><code>limite</code></td><td>Quantos candidatos</td><td><code>10</code></td><td>de 1 a 100</td></tr>
 				<tr><td><code>foto</code></td><td>Foto do candidato</td><td><code>sim</code></td><td><code>sim</code> mostra a foto quando existe; <code>nao</code> omite a foto; <code>somente</code> lista só quem tem foto</td></tr>
-				<tr><td><code>ids</code></td><td>Escolhe os candidatos e a ordem</td><td>ordem alfabética</td><td>identificadores do TSE separados por vírgula (os mesmos de <code>?ae_candidato=</code>)</td></tr>
+				<tr><td><code>ids</code></td><td>Escolhe os candidatos e a ordem</td><td>ordem do ranking</td><td>identificadores do TSE separados por vírgula (os mesmos de <code>?ae_candidato=</code>); a ordem informada vale sobre <code>ordem</code></td></tr>
+				<tr><td><code>ordem</code></td><td>Ordem dos candidatos</td><td><code>ranking</code></td><td><code>ranking</code> segue a ordem da apuração (último resultado válido da disputa); <code>nome</code> é alfabética. Sem resultado ainda, cai para o nome</td></tr>
 				<tr><td><code>layout</code></td><td>Faixa pronta ou só a lista</td><td><code>carrossel</code></td><td><code>lista</code> devolve só <code>&lt;ul class="ae-candidate-list"&gt;&lt;li&gt;</code>, sem título, CSS nem JS, para o tema montar o próprio visual</td></tr>
 				<tr><td><code>titulo</code></td><td>Título da faixa</td><td><code>Acompanhe por candidato</code></td><td>texto; vazio (<code>titulo=""</code>) oculta</td></tr>
 				<tr><td><code>kicker</code></td><td>Chamada acima do título</td><td><code>Eleições 2026</code> (ano importado)</td><td>texto; vazio oculta</td></tr>
