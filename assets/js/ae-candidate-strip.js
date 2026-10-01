@@ -38,8 +38,8 @@
 					var showVotes = el.hasAttribute( 'data-votos' );
 					var showPct = el.hasAttribute( 'data-pct' );
 					var parts = [];
-					if ( showVotes ) { parts.push( fmt( votes ) + ( 1 === votes ? ' voto' : ' votos' ) ); }
 					if ( showPct ) { parts.push( fmt( parseFloat( c.percentage ) || 0, 2 ) + '%' ); }
+					if ( showVotes ) { parts.push( fmt( votes ) + ( 1 === votes ? ' voto' : ' votos' ) ); }
 					if ( Number( c.elected ) ) { parts.push( 'Eleito' ); }
 					el.textContent = parts.join( ' · ' );
 				} );
