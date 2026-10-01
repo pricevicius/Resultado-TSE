@@ -15,7 +15,7 @@ Valem para qualquer projeto que use o plugin. Esforço e risco são estimativas.
 | A9 | **`contest_id` guarda uma disputa só por candidato** | Num 2º turno o candidato pertence à disputa do 1º e à do 2º. O EA20 do 2º turno reescreve o vínculo. Revisar quando houver 2º turno (exige decidir se o vínculo vira tabela própria). | a avaliar | médio |
 | A10 | **Validar o 120 s e o atraso de 5 s na fila contra o TSE real** | A parte local foi medida (coleta de 1.100 candidatos: ~0,3 s e ~20 queries; 304 em ~10 ms). Falta o tempo de rede do TSE (download do JSON) e o comportamento com várias UFs. Se a rede for rápida, o intervalo das pesadas pode voltar para 60 s. São ajustáveis (`ae_heavy_interval`, constante `HEAVY_QUEUE_DELAY`). | 1 a 2 h | baixo |
 
-| A13 | **Manter a branch `php7.2`** | Um projeto roda PHP 7.2.34 (Ubuntu 24.04, repositório sury). A branch `php7.2` existe desde a 2.5.0 e foi testada em PHP 7.2.34 com WordPress 5.6. O custo é contínuo: toda mudança entra em `main`, vai por cherry-pick para `php7.4` e depois para `php7.2`, onde precisa ser **reescrita sem sintaxe do 7.4** (ver "Versões de PHP" em E). O PHP 7.2 está sem correção de segurança desde 2020: o projeto deve ter um plano de migrar para 7.4 ou superior, e esta branch deve ser aposentada quando isso acontecer. | 15 a 30 min por release | baixo (o lint no 7.2 pega o erro de sintaxe; o resto pega o teste em WordPress) |
+| A13 | **Manter a branch `php7.2`** | Um projeto roda PHP 7.2.34 (Ubuntu 24.04, repositório sury). A branch `php7.2` existe desde a 2.5.0 (release `v2.5.0-php7.2`) e foi testada em PHP 7.2 com WordPress 4.9.8 e 5.6. O custo é contínuo, mas pequeno: toda mudança entra em `main`, vai por cherry-pick para `php7.4` e a `php7.2` é **regenerada por script** (ver "Versões de PHP" em E). Código novo na `main` deve evitar o que o script não sabe converter (ele para com erro, sem gerar nada errado). O PHP 7.2 está sem correção de segurança desde 2020: o projeto deve ter um plano de migrar para 7.4 ou superior, e esta branch deve ser aposentada quando isso acontecer. | 10 a 15 min por release | baixo (o script falha em voz alta; o lint no 7.2 e as suítes em WordPress confirmam) |
 
 **Entregue na 2.5.0:** A1 (gravação do snapshot em lote), A3 (candidato que sai do CSV), A4 (última importação na tela e reimportação agendada, opt-in), A5 (aviso de disputas da UF desligadas), A7 (aviso de tabelas fora do InnoDB), A8 (`tests/run-in-docker.sh` e `tests/wp-integration.php`; bootstrap do PHPUnit corrigido), A11 (versão única) a maior parte do A6 e o A12 (catálogo: consulta enxuta, 1.275 → 104 ms na página 1 com 62 mil candidatos; busca por nome ~200 ms nessa escala, aceitável). Detalhes em [DOCUMENTACAO-PLUGIN-APURACAO.md](DOCUMENTACAO-PLUGIN-APURACAO.md#versão-250--importação-saúde-e-coleta-mais-barata).
 
@@ -73,21 +73,22 @@ No projeto de origem (Tribuna Online), em 01/10/2026: os ponteiros dos submódul
 
 **Versões de PHP (três branches):** `main` exige PHP 8.1+, `php7.4` exige 7.4+ e `php7.2` exige 7.2+. Não há branch para 7.3 (use a `php7.2`, que roda nele também). O PHP 7.2 e o 7.3 estão sem correção de segurança, então a `php7.2` existe só para projetos que ainda não conseguiram migrar.
 
-**O que a `php7.2` troca em relação à `php7.4`** (regras para refazer a cada cherry-pick):
-- sem propriedades tipadas (`private static ?AE_X $instance` vira `private static $instance`);
-- sem arrow functions: `fn( $x ) => expr` vira `function ( $x ) { return expr; }`, com `use ( $var )` para o que ela capturava de fora;
-- sem `??=`: o singleton vira `if ( null === self::$instance ) { self::$instance = new self(); } return self::$instance;`;
-- sem `JSON_THROW_ON_ERROR` nem `JsonException` (do 7.3): `json_decode` seguido de `json_last_error()`;
-- `includes/compat.php` define `str_contains`, `str_starts_with` e `str_ends_with` quando não existem (o WordPress só os traz a partir da 5.9);
-- cabeçalho `Requires PHP: 7.2`.
-O portão é o lint no 7.2 (`docker run --rm -v "$PWD":/p php:7.2-cli …`) e as suítes em WordPress com PHP 7.2.
+**A `php7.2` é gerada, não escrita à mão.** Ela sai da `php7.4` por `python3 tools/port-php72.py`, que reescreve só a sintaxe que o PHP 7.2 não tem: propriedades tipadas, arrow functions (`fn`), `??=` e `JSON_THROW_ON_ERROR`/`JsonException`, e ajusta o cabeçalho para `Requires PHP: 7.2`. O script para com erro se o código mudar de um jeito que ele não conhece (e confere que nada do 7.3/7.4 sobrou). O que não depende de versão fica em **todas** as branches: `includes/compat.php` (polyfills de `str_contains`, `str_starts_with`, `str_ends_with` e `wp_date`) e a guarda que só registra o bloco Gutenberg quando o WordPress suporta (5.5+; nos mais antigos o shortcode cobre o uso). Assim o plugin não depende da versão do WordPress. Testada em PHP 7.2.12 + WordPress 4.9.8 e em PHP 7.2.34 + WordPress 5.6.
+
+Para atualizar a `php7.2` depois de qualquer mudança na `php7.4`:
+
+```bash
+git checkout php7.2 && git reset --hard php7.4 && python3 tools/port-php72.py
+# lint no 7.2 e suítes em WordPress com PHP 7.2; então:
+git add -A && git commit -m "port: variante PHP 7.2 gerada de php7.4 @ <sha>"
+```
 
 **Publicar uma mudança** (nas três branches e nos dois remotes):
 
 ```bash
 git checkout main      # commit aqui
 git checkout php7.4 && git cherry-pick <commit>   # conflito esperado só no cabeçalho de versão: manter a versão nova e "Requires PHP: 7.4"
-git checkout php7.2 && git cherry-pick <commit-da-php7.4>   # conflito no cabeçalho ("Requires PHP: 7.2") e reescrever o que o 7.2 não tem (regras acima)
+git checkout php7.2 && git reset --hard php7.4 && python3 tools/port-php72.py && git add -A && git commit -m "port: ..."   # gerada, sem cherry-pick (ver acima)
 # lint nas duas versões:
 docker run --rm -v "$PWD":/p php:7.4-cli sh -c 'for f in /p/includes/*.php /p/tse-apuracao.php; do php -l $f; done'
 docker run --rm -v "$PWD":/p php:8.2-cli sh -c 'for f in /p/includes/*.php /p/tse-apuracao.php; do php -l $f; done'
