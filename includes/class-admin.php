@@ -143,13 +143,18 @@ final class AE_Admin {
 
 	private function tab_selecao(): void {
 		global $wpdb; $p = $wpdb->prefix . 'ae_';
-		$contests = $wpdb->get_results( "SELECT c.id,c.position_name,c.scope_name,c.round_no,c.config_json,(SELECT MAX(captured_at) FROM {$p}snapshots s WHERE s.contest_id=c.id AND s.status='valid') latest FROM {$p}contests c WHERE c.active=1 ORDER BY c.position_name,c.scope_name,c.round_no" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$contests = $wpdb->get_results( "SELECT c.id,c.position_code,c.scope_code,c.position_name,c.scope_name,c.round_no,c.config_json,(SELECT MAX(captured_at) FROM {$p}snapshots s WHERE s.contest_id=c.id AND s.status='valid') latest FROM {$p}contests c WHERE c.active=1 ORDER BY c.position_name,c.scope_name,c.round_no" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$groups = array();
 		foreach ( $contests as $c ) { $groups[ $c->position_name ][] = $c; }
 		?><section class="ae-panel">
 		<div class="notice notice-warning inline" style="border-left:4px solid #d63638;padding:1px 12px;margin:0 0 16px;"><p><strong>Atenção:</strong> disputas <u>desmarcadas</u> abaixo <strong>não são sincronizadas com o TSE</strong> — ficam paradas no último dado coletado (ou nunca chegam a ter um), mesmo que apareçam publicadas em algum shortcode ou bloco do site. Marque só o que está de fato publicado.</p></div>
 		<h2>Seleção de disputas para sincronização automática</h2>
 		<p class="description">Agrupado por cargo, tudo fechado por padrão. Sincronizar com o TSE (aba Configuração) recria esta lista, mas preserva o que você marcar/desmarcar aqui — só volta a marcar tudo se a disputa for nova.</p>
+		<?php $uf_count = AE_Collection_Policy::count_enabled_ufs( $contests ); $multi_uf = $uf_count > 1; $heavy_seconds = AE_Collection_Policy::heavy_interval(); ?>
+		<div class="notice notice-info inline" style="padding:8px 12px;margin:0 0 16px;">
+			<p><strong>Quanto cada disputa atualiza.</strong> Presidente, Governador e Senador (os cargos majoritários) atualizam a cada <strong><?php echo esc_html( (string) AE_Collection_Policy::DEFAULT_INTERVAL ); ?> s</strong> e vão na frente da fila. Quando <strong>mais de uma UF</strong> está ligada, Deputado Federal e Estadual/Distrital passam a atualizar a cada <strong><?php echo esc_html( (string) $heavy_seconds ); ?> s</strong>: cada coleta deles tem centenas de candidatos por UF e, no mesmo ritmo, atrasaria todas as outras. Com uma UF só, tudo fica em <?php echo esc_html( (string) AE_Collection_Policy::DEFAULT_INTERVAL ); ?> s.</p>
+			<p><?php if ( $multi_uf ) : ?><strong>Agora há <?php echo esc_html( (string) $uf_count ); ?> UFs ligadas: a regra está ativa</strong> e os deputados atualizam mais devagar.<?php else : ?>Agora há <?php echo esc_html( (string) $uf_count ); ?> UF ligada: a regra está inativa e tudo atualiza em <?php echo esc_html( (string) AE_Collection_Policy::DEFAULT_INTERVAL ); ?> s.<?php endif; ?> Você pode ajustar disputa por disputa na coluna <em>Atualiza a cada</em> (30 a 900 s); apague o valor para voltar ao automático. Uma coleta pesada já em andamento ocupa a fila até terminar, e esta regra não encurta isso.</p>
+		</div>
 		<p><input type="search" id="ae-selecao-busca" class="regular-text" placeholder="Buscar por cargo ou abrangência (ex.: Espírito Santo)"></p>
 		<form action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="post">
 		<?php wp_nonce_field( 'ae_save_sync_selection' ); ?>
@@ -159,11 +164,15 @@ final class AE_Admin {
 			foreach ( $rows as $c ) { $config = json_decode( (string) $c->config_json, true ); if ( ! isset( $config['collection']['enabled'] ) || $config['collection']['enabled'] ) { $enabled_count++; } }
 			?><details class="ae-selecao-grupo"><summary><strong><?php echo esc_html( $position_name ); ?></strong> — <?php echo esc_html( (string) $enabled_count ); ?> de <?php echo esc_html( (string) count( $rows ) ); ?> sincronizando</summary>
 			<p><button type="button" class="button button-small ae-marcar" onclick="this.closest('details').querySelectorAll('.ae-sync-check').forEach(function(c){c.checked=true;})">Marcar todas do grupo</button> <button type="button" class="button button-small" onclick="this.closest('details').querySelectorAll('.ae-sync-check').forEach(function(c){c.checked=false;})">Desmarcar todas do grupo</button></p>
-			<table class="widefat striped"><thead><tr><th>Sincronizar</th><th>Disputa</th><th>Último snapshot (UTC)</th></tr></thead><tbody>
+			<table class="widefat striped"><thead><tr><th>Sincronizar</th><th>Disputa</th><th>Atualiza a cada</th><th>Último snapshot (UTC)</th></tr></thead><tbody>
 			<?php foreach ( $rows as $c ) :
 				$config = json_decode( (string) $c->config_json, true );
 				$enabled = ! isset( $config['collection']['enabled'] ) || $config['collection']['enabled'];
-				?><tr class="ae-selecao-linha" data-busca="<?php echo esc_attr( mb_strtolower( $position_name . ' ' . $c->scope_name ) ); ?>"><td><label><input class="ae-sync-check" type="checkbox" name="enabled[<?php echo esc_attr( (string) $c->id ); ?>]" value="1" <?php checked( $enabled ); ?>><input type="hidden" name="contest_ids[]" value="<?php echo esc_attr( (string) $c->id ); ?>"></label></td><td><?php echo esc_html( $c->scope_name . ' · ' . $c->round_no . 'º turno' ); ?></td><td><?php echo esc_html( $c->latest ?: '—' ); ?></td></tr>
+				$collection = is_array( $config['collection'] ?? null ) ? $config['collection'] : array();
+				$row_interval = AE_Collection_Policy::clamp( absint( $collection['interval'] ?? AE_Collection_Policy::DEFAULT_INTERVAL ) );
+				$row_auto = AE_Collection_Policy::automatic_interval( (string) $c->position_code, $multi_uf );
+				$row_manual = AE_Collection_Policy::is_manual( $collection );
+				?><tr class="ae-selecao-linha" data-busca="<?php echo esc_attr( mb_strtolower( $position_name . ' ' . $c->scope_name ) ); ?>"><td><label><input class="ae-sync-check" type="checkbox" name="enabled[<?php echo esc_attr( (string) $c->id ); ?>]" value="1" <?php checked( $enabled ); ?>><input type="hidden" name="contest_ids[]" value="<?php echo esc_attr( (string) $c->id ); ?>"></label></td><td><?php echo esc_html( $c->scope_name . ' · ' . $c->round_no . 'º turno' ); ?></td><td><input type="number" class="small-text" name="interval[<?php echo esc_attr( (string) $c->id ); ?>]" min="<?php echo esc_attr( (string) AE_Collection_Policy::MIN_INTERVAL ); ?>" max="<?php echo esc_attr( (string) AE_Collection_Policy::MAX_INTERVAL ); ?>" step="5" value="<?php echo esc_attr( (string) $row_interval ); ?>" placeholder="<?php echo esc_attr( (string) $row_auto ); ?>"> s <small><?php echo $row_manual ? 'manual' : 'automático'; ?></small></td><td><?php echo esc_html( $c->latest ?: '—' ); ?></td></tr>
 			<?php endforeach; ?>
 			</tbody></table>
 			</details>
@@ -223,8 +232,22 @@ final class AE_Admin {
 			if ( ! is_array( $config ) ) { $config = array(); }
 			$config['collection'] = is_array( $config['collection'] ?? null ) ? $config['collection'] : array();
 			$config['collection']['enabled'] = in_array( $id, $enabled_ids, true );
+			// Intervalo: campo vazio devolve a disputa ao automático; valor diferente do gravado vira ajuste manual (a regra nunca o sobrescreve); igual ao gravado não muda nada.
+			$posted = isset( $_POST['interval'][ $id ] ) ? trim( (string) wp_unslash( $_POST['interval'][ $id ] ) ) : null;
+			if ( '' === $posted ) {
+				$config['collection']['interval_mode'] = 'auto';
+			} elseif ( null !== $posted && ctype_digit( $posted ) ) {
+				$stored = AE_Collection_Policy::clamp( absint( $config['collection']['interval'] ?? AE_Collection_Policy::DEFAULT_INTERVAL ) );
+				$new_interval = AE_Collection_Policy::clamp( (int) $posted );
+				if ( $new_interval !== $stored ) {
+					$config['collection']['interval'] = $new_interval;
+					$config['collection']['interval_mode'] = 'manual';
+				}
+			}
 			$wpdb->update( $p . 'contests', array( 'config_json' => wp_json_encode( $config ) ), array( 'id' => $id ) );
 		}
+		// O conjunto de UFs ligadas pode ter mudado: recalcula o intervalo das disputas em modo automático.
+		AE_Collection_Policy::apply_all();
 		AE_Logger::write( 'info', 'sync_selection_saved', array( 'total' => count( $ids ), 'enabled' => count( $enabled_ids ) ) );
 		$this->redirect( 'selecao', 'Seleção salva: ' . count( $enabled_ids ) . ' de ' . count( $ids ) . ' disputas sincronizando automaticamente.' );
 	}

@@ -237,11 +237,12 @@ class TSE_Shortcode {
 		$checked_timestamp = $checked_at ? strtotime( $checked_at ) : false;
 		$is_final = 'final' === ( $totals['progress'] ?? '' );
 		$proxima_ts = null;
+		$interval = AE_Collection_Policy::DEFAULT_INTERVAL;
 		if ( ! $is_final ) {
 			global $wpdb;
 			$config_json = $wpdb->get_var( $wpdb->prepare( "SELECT config_json FROM {$wpdb->prefix}ae_contests WHERE id=%d", (int) ( $data['contest']['id'] ?? 0 ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$config = json_decode( (string) $config_json, true );
-			$interval = max( 30, min( 900, absint( $config['collection']['interval'] ?? 60 ) ) );
+			$interval = AE_Collection_Policy::clamp( absint( $config['collection']['interval'] ?? AE_Collection_Policy::DEFAULT_INTERVAL ) );
 			$proxima_ts = ( $checked_timestamp ?: $captured_timestamp ?: time() ) + $interval;
 		}
         $candidates = array_map( static function ( array $candidate ): array {
@@ -272,7 +273,7 @@ class TSE_Shortcode {
             'pct_apurado' => $pct,
 			'pct_apurado_numero' => round( $pct_number, 2 ),
 			// Disputa "final" nao recebe mais atualizacoes do TSE; snapshot antigo ali e normal, nao atraso.
-			'atrasado' => 'final' !== ( $totals['progress'] ?? '' ) && ( ! $checked_timestamp || $checked_timestamp < time() - 3 * MINUTE_IN_SECONDS ),
+			'atrasado' => 'final' !== ( $totals['progress'] ?? '' ) && ( ! $checked_timestamp || $checked_timestamp < time() - AE_Collection_Policy::stale_after( $interval ) ),
 			'votos_brancos' => (int) ( $totals['blank_votes'] ?? 0 ),
 			'votos_nulos' => (int) ( $totals['null_votes'] ?? 0 ),
 			'votos_anulados' => (int) ( $totals['annulled_votes'] ?? 0 ),

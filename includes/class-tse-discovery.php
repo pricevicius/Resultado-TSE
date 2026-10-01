@@ -51,6 +51,8 @@ final class AE_TSE_Discovery {
 		if ( 0 === $matched ) {
 			throw new RuntimeException( sprintf( 'O TSE respondeu, mas ainda não publicou a eleição de %d no EA11 (%s).', $year, $cycle ?: 'ciclo não informado' ) );
 		}
+		// Disputas novas e mudança no conjunto de UFs ligadas: aplica a regra de intervalo (ajustes manuais ficam).
+		AE_Collection_Policy::apply_all();
 		update_option( 'ae_tse_environment', $environment, false );
 		update_option( 'ae_tse_catalog_checked_at', current_time( 'mysql', true ), false );
 		AE_Logger::write( 'info', 'tse_catalog_synced', array( 'environment' => $environment, 'year' => $year, 'elections' => $matched, 'url' => $url ) );
@@ -88,7 +90,10 @@ final class AE_TSE_Discovery {
 					// Disputa ja existente: preserva o que o admin marcou. Disputa nova: sem UF do site configurada, nasce ligada (compatibilidade); com UF configurada, nasce ligada só se for dessa UF ou nacional (br) — Presidente é o único cargo nacional hoje.
 					$default_enabled = '' === $site_uf || strtoupper( $contest_scope ) === $site_uf || 'br' === $contest_scope;
 					$enabled = isset( $existing_config['collection']['enabled'] ) ? (bool) $existing_config['collection']['enabled'] : $default_enabled;
-					$contest_config = array( 'collection' => array( 'source_url' => $source_url, 'kind' => 'EA20', 'interval' => 60, 'enabled' => $enabled, 'managed' => true ) );
+					$contest_config = array( 'collection' => array( 'source_url' => $source_url, 'kind' => 'EA20', 'interval' => AE_Collection_Policy::DEFAULT_INTERVAL, 'enabled' => $enabled, 'managed' => true ) );
+					// O ON DUPLICATE KEY abaixo regrava o config_json inteiro: carrega o intervalo e quem o definiu (auto/manual) para um ajuste manual do admin sobreviver ao re-sync. O automático é recalculado no fim da sincronização.
+					if ( isset( $existing_config['collection']['interval'] ) ) { $contest_config['collection']['interval'] = absint( $existing_config['collection']['interval'] ); }
+					if ( isset( $existing_config['collection']['interval_mode'] ) ) { $contest_config['collection']['interval_mode'] = sanitize_key( (string) $existing_config['collection']['interval_mode'] ); }
 					// EA11 nao informa vagas; Senado renova por tercos alternados e 2026 elege 1 vaga por UF (2022 elegeu 2).
 					$seats = 1;
 					$scope_type = 'br' === $contest_scope ? 'BR' : 'UF';

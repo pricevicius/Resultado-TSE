@@ -686,6 +686,56 @@ marcadores (`#` + letras maiúsculas): a importação não grava mais `#NE` em
 `ae_candidates` já importados antes (a limpeza também ocorre na exibição, sem reimportar).
 Quando a situação fica vazia, a ficha mostra "Não informada".
 
+## Intervalo de coleta por tipo de disputa — versão 2.4.0
+
+Problema: o worker é sequencial e uma coleta de Deputado Federal/Estadual (centenas de
+candidatos por UF) pode levar minutos. Com várias UFs ligadas, essas coletas atrasam todas
+as outras, inclusive as majoritárias.
+
+**Regra** (`AE_Collection_Policy`, `includes/class-collection-policy.php`), aplicada **só
+quando há mais de uma UF ligada** (o Presidente é nacional e não conta como UF):
+
+| Disputa | Intervalo | Fila |
+| --- | --- | --- |
+| Presidente, Governador, Senador (e Prefeito) | 60 s | vão primeiro |
+| Deputado Federal, Estadual e Distrital | 120 s (filtro `ae_heavy_interval`) | esperam 5 s na fila |
+
+Com uma UF só, tudo fica em 60 s e a fila não muda. Quando o conjunto de UFs ligadas muda
+(sincronização ou salvar a Seleção de disputas), `AE_Collection_Policy::apply_all()` recalcula
+o intervalo automático.
+
+- **Prioridade:** `enqueue_due_collections` enfileira as leves antes das pesadas, e, com mais
+  de uma UF, as pesadas entram com `run_after` 5 s à frente. Assim, uma leve que vença logo
+  depois ainda passa na frente de uma pesada que já estava na fila (a fila atende por
+  `run_after` e `id`). Não há coluna nova nem segunda fila.
+- **Explícito para o admin:** a aba **Seleção de disputas** tem um texto fixo com a regra e o
+  estado atual ("agora há N UFs ligadas: regra ativa/inativa") e a coluna **Atualiza a cada**
+  por disputa, marcada como *automático* ou *manual*. O valor vai de 30 a 900 s.
+- **Ajuste manual:** alterar o valor na coluna grava `collection.interval_mode = "manual"` e
+  a regra nunca mais o sobrescreve. Apagar o campo devolve a disputa ao automático.
+  A sincronização do EA11 regrava o `config_json` inteiro; ela agora carrega `interval` e
+  `interval_mode` do que já existia, para um ajuste manual sobreviver a um novo sync.
+- **Disputas sincronizadas antes da 2.4.0** não têm `interval_mode`. Valem como
+  **automáticas** se o intervalo gravado é 60 s ou o das pesadas, e como **manuais** em qualquer
+  outro valor, para nunca apagar um ajuste que alguém tenha feito.
+- **"Dados atrasados" no front:** o limiar deixou de ser fixo em 3 min e passou a
+  `max(3 min, 3 × intervalo da disputa)` (`AE_Collection_Policy::stale_after`): 3 min para
+  60 s e 6 min para 120 s. Sem isso, deputados a cada 2 min apareceriam como atrasados.
+
+**O que a regra não resolve:** um job pesado já em andamento segura o lock do worker até
+terminar (o orçamento de 40 s é checado só entre jobs). A regra reduz a frequência e dá
+prioridade às leves, mas não interrompe uma coleta que já começou. Tornar a coleta pesada
+mais barata (inserção em lote, pular candidato sem mudança) continua como melhoria futura.
+
+**Snapshot em transação:** `persist_result` gravava o snapshot como `valid` e só depois as
+linhas do ranking, sem transação; um processo interrompido no meio deixava um snapshot
+parcial sendo servido. Agora snapshot e linhas entram em `START TRANSACTION`/`COMMIT`, com
+`ROLLBACK` e nova tentativa do job se qualquer inserção falhar. Exige tabelas InnoDB (o
+padrão do MySQL e do MariaDB atuais; o esquema não fixa o engine).
+
+**Slack removido:** o plugin não se comunica mais com Slack nem com nenhum serviço de alerta
+(ver "Saúde do disparo"). O aviso de cron parado e o campo `tick` da REST de saúde continuam.
+
 ## Repositório — código movido para submódulo (22/09/2026)
 
 O plugin deixou de viver dentro dos monorepos de site. Fonte de verdade agora é
