@@ -28,3 +28,14 @@ if ( ! function_exists( 'wp_date' ) ) {
 		return date_i18n( $format, $timestamp + $offset );
 	}
 }
+
+/**
+ * Servidores sem a extensão mbstring: fallbacks das funções mb_* que o plugin usa. Só minúsculas ASCII
+ * são tratadas (suficiente para comparar "turno" e montar o texto de busca do admin).
+ */
+if ( ! function_exists( 'mb_strtolower' ) ) {
+	function mb_strtolower( $string, $encoding = null ) { return strtolower( (string) $string ); }
+}
+if ( ! function_exists( 'mb_stripos' ) ) {
+	function mb_stripos( $haystack, $needle, $offset = 0, $encoding = null ) { return stripos( (string) $haystack, (string) $needle, $offset ); }
+}
